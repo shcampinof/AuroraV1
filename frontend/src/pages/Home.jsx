@@ -5,7 +5,7 @@ function Home() {
         <img
           src="/LogoAurora.png"
           alt="Logo AURORA"
-          style={{ width: '30em' }}
+          className="home-logo"
         />
       </div>
 

@@ -31,7 +31,10 @@ function CajaHerramientas() {
         <div className="tools-grid">
           {formatos.map((f) => (
             <div key={f.id} className="tool-card">
-              <div className="tool-icon" aria-hidden="true">📄</div>
+              <a href={getFormatoDownloadUrl(f.id)} aria-label={`Descargar ${f.titulo}`}>
+                <img className="tool-logo" src="/Documento-aurora.png" alt="Aurora" />
+              </a>
+
               <div className="tool-title">{f.titulo}</div>
 
               <a className="tool-download" href={getFormatoDownloadUrl(f.id)}>
