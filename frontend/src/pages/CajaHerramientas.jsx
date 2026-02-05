@@ -4,16 +4,18 @@ import { getFormatos, getFormatoDownloadUrl } from '../services/api.js';
 function CajaHerramientas() {
   const [formatos, setFormatos] = useState([]);
   const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     async function cargar() {
       setCargando(true);
+      setError('');
       try {
         const data = await getFormatos();
         setFormatos(data);
       } catch (e) {
         console.error(e);
-        alert('Error cargando formatos');
+        setError('Error cargando formatos.');
       } finally {
         setCargando(false);
       }
@@ -26,6 +28,7 @@ function CajaHerramientas() {
       <h2 className="center-title">Formatos para apoyar las solicitudes de atención jurídica</h2>
 
       {cargando && <p>Cargando...</p>}
+      {error && <p className="hint-text">{error}</p>}
 
       {!cargando && (
         <div className="tools-grid">

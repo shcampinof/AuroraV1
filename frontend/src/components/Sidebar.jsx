@@ -3,7 +3,6 @@ const items = [
   { id: 'formulario', label: 'Formulario de Entrevista' },
   { id: 'registros', label: 'Usuarios asignados' },
   { id: 'asignacion', label: 'PAG - Asignación de Casos' },
-  { id: 'consultaAsignacion', label: 'Defensores - Consultar casos asignados' },
   { id: 'herramientas', label: 'Caja de Herramientas' },
   { id: 'manual', label: 'Manual Interactivo' },
 ];

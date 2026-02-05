@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getPplListado } from '../services/api.js';
+import { getDefensores, getDefensoresCondenados, getPplListado } from '../services/api.js';
+import { getEstadoEntrevista, pickActiveCaseData } from '../utils/entrevistaEstado.js';
+import {
+  displayOrDash,
+  getDepartamentoReclusion,
+  getMunicipioReclusion,
+  getNombreUsuario,
+  getNumeroIdentificacion,
+  getSituacionJuridica,
+} from '../utils/pplDisplay.js';
 
 function prettifyHeader(key) {
-  // convierte camelCase / snake_case a “Título bonito”
   if (!key) return '';
   const spaced = String(key)
     .replace(/_/g, ' ')
@@ -39,7 +47,8 @@ function getCellValue(row, key) {
   if (key === 'posibleActuacionJudicial') {
     return row?.posibleActuacionJudicial ?? '-';
   }
-  return row?.[key];
+  const data = pickActiveCaseData(row);
+  return data?.[key];
 }
 
 function findDocumentoKey(columns) {
@@ -58,21 +67,18 @@ function findDocumentoKey(columns) {
     const hit = lowerMap.get(cand.toLowerCase());
     if (hit) return hit;
   }
-  // fallback: primera columna que parezca documento
   const fallback = columns.find((c) => /doc|ident|cedul|id/i.test(String(c)));
   return fallback || null;
 }
 
 export default function RegistrosAsignados({ onSelectRegistro }) {
-  const [tipoPpl, setTipoPpl] = useState('condenado'); // 'condenado' | 'sindicado'
+  const [tipoPpl, setTipoPpl] = useState('condenado');
   const [cargando, setCargando] = useState(true);
 
   const [columns, setColumns] = useState([]);
   const [rows, setRows] = useState([]);
 
-  // filtros
   const [mostrarFiltros, setMostrarFiltros] = useState(true);
-  const [fTexto, setFTexto] = useState('');
   const [fDocumento, setFDocumento] = useState('');
   const [fEstado, setFEstado] = useState('-');
   const [fAvance, setFAvance] = useState('-');
@@ -80,8 +86,45 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   const [fMunicipio, setFMunicipio] = useState('');
   const [fEstablecimiento, setFEstablecimiento] = useState('');
   const [fDefensor, setFDefensor] = useState('');
-  const [fColumna, setFColumna] = useState('');
+  const [fColumna, setFColumna] = useState('__all__'); // '__all__' o nombre de columna
   const [fValorColumna, setFValorColumna] = useState('');
+
+  const [defensorInput, setDefensorInput] = useState('');
+  const [defensores, setDefensores] = useState([]);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function cargarDefensores() {
+      try {
+        const [fromCsv, fromCondenados] = await Promise.all([
+          getDefensores(), // backend/data/defensores.csv (opcional)
+          getDefensoresCondenados(), // distinct desde condenados.csv
+        ]);
+
+        const a = Array.isArray(fromCsv?.defensores) ? fromCsv.defensores : [];
+        const b = Array.isArray(fromCondenados?.defensores) ? fromCondenados.defensores : [];
+
+        const map = new Map();
+        [...a, ...b].forEach((name) => {
+          const val = String(name || '').trim();
+          if (!val) return;
+          const key = val.toLowerCase();
+          if (!map.has(key)) map.set(key, val);
+        });
+
+        if (alive) setDefensores(Array.from(map.values()));
+      } catch (e) {
+        console.error(e);
+        if (alive) setDefensores([]);
+      }
+    }
+
+    cargarDefensores();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -90,13 +133,11 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       setCargando(true);
       try {
         const data = await getPplListado(tipoPpl);
-
         if (!alive) return;
 
         const cols = Array.isArray(data?.columns) ? data.columns : [];
         const rws = Array.isArray(data?.rows) ? data.rows : [];
 
-        // fallback: si no viene columns, inferimos desde las keys
         const inferred =
           cols.length > 0
             ? cols
@@ -131,13 +172,20 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     };
   }, [tipoPpl]);
 
+  const defensoresOrdenados = useMemo(() => {
+    return [...defensores].sort((a, b) => a.localeCompare(b));
+  }, [defensores]);
+
   const documentoKey = useMemo(() => findDocumentoKey(columns), [columns]);
 
   const estadosDisponibles = useMemo(() => {
-    if (!columns.includes('estadoEntrevista')) return [];
-    const set = new Set(rows.map((r) => String(r?.estadoEntrevista ?? '')).filter(Boolean));
-    return Array.from(set);
-  }, [rows, columns]);
+    const map = new Map();
+    rows.forEach((r) => {
+      const st = getEstadoEntrevista(r, tipoPpl);
+      if (st?.code) map.set(st.code, st.label);
+    });
+    return Array.from(map.entries()).map(([code, label]) => ({ code, label }));
+  }, [rows, tipoPpl]);
 
   const avancesDisponibles = useMemo(() => {
     if (!columns.includes('avanceFormulario')) return [];
@@ -146,59 +194,69 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   }, [rows, columns]);
 
   const rowsFiltradas = useMemo(() => {
-    const txt = fTexto.trim().toLowerCase();
     const docNeedle = fDocumento.trim();
-    const colNeedle = fValorColumna.trim().toLowerCase();
+    const needle = fValorColumna.trim().toLowerCase();
 
     return rows.filter((r) => {
       const obj = r || {};
+      const data = pickActiveCaseData(obj);
 
-      // filtro documento (si existe key)
-      if (docNeedle && documentoKey) {
-        const docVal = String(obj[documentoKey] ?? '');
+      if (docNeedle) {
+        const docVal = String(getNumeroIdentificacion(obj) ?? '');
         if (!docVal.includes(docNeedle)) return false;
       }
 
-      // estado/avance solo si existen
-      if (fEstado !== '-' && columns.includes('estadoEntrevista')) {
-        if (String(obj.estadoEntrevista ?? '') !== fEstado) return false;
+      if (fEstado !== '-') {
+        const st = getEstadoEntrevista(obj, tipoPpl);
+        if (String(st?.code || '') !== fEstado) return false;
       }
       if (fAvance !== '-' && columns.includes('avanceFormulario')) {
-        if (String(obj.avanceFormulario ?? '') !== fAvance) return false;
+        if (String(data?.avanceFormulario ?? '') !== fAvance) return false;
       }
 
-      // text filters por campos “clásicos” si existen
-      if (fDepartamento && columns.includes('departamentoEron')) {
-        if (!String(obj.departamentoEron ?? '').toLowerCase().includes(fDepartamento.trim().toLowerCase()))
-          return false;
-      }
-      if (fMunicipio && columns.includes('municipioEron')) {
-        if (!String(obj.municipioEron ?? '').toLowerCase().includes(fMunicipio.trim().toLowerCase()))
-          return false;
-      }
-      if (fEstablecimiento && columns.includes('establecimientoReclusion')) {
+      if (fDepartamento) {
         if (
-          !String(obj.establecimientoReclusion ?? '')
+          !String(getDepartamentoReclusion(obj, tipoPpl) ?? '')
+            .toLowerCase()
+            .includes(fDepartamento.trim().toLowerCase())
+        )
+          return false;
+      }
+      if (fMunicipio) {
+        if (
+          !String(getMunicipioReclusion(obj, tipoPpl) ?? '')
+            .toLowerCase()
+            .includes(fMunicipio.trim().toLowerCase())
+        )
+          return false;
+      }
+      if (fEstablecimiento) {
+        if (
+          !String(data?.establecimientoReclusion ?? data?.Establecimiento ?? '')
             .toLowerCase()
             .includes(fEstablecimiento.trim().toLowerCase())
         )
           return false;
       }
-      if (fDefensor && columns.includes('defensorAsignado')) {
-        if (!String(obj.defensorAsignado ?? '').toLowerCase().includes(fDefensor.trim().toLowerCase()))
+      if (fDefensor) {
+        const defVal =
+          data?.defensorAsignado ??
+          data?.['Defensor(a) Público(a) Asignado para tramitar la solicitud'] ??
+          data?.['Defensor(a) PÃºblico(a) Asignado para tramitar la solicitud'] ??
+          '';
+        if (!String(defVal ?? '').toLowerCase().includes(fDefensor.trim().toLowerCase())) {
           return false;
+        }
       }
 
-      // filtro por columna seleccionada
-      if (fColumna && colNeedle) {
-        const val = String(getCellValue(obj, fColumna) ?? '').toLowerCase();
-        if (!val.includes(colNeedle)) return false;
-      }
-
-      // filtro global (busca en TODAS las columnas)
-      if (txt) {
-        const hay = columns.some((c) => String(getCellValue(obj, c) ?? '').toLowerCase().includes(txt));
-        if (!hay) return false;
+      if (needle) {
+        if (fColumna === '__all__' || !fColumna) {
+          const hay = columns.some((c) => String(getCellValue(obj, c) ?? '').toLowerCase().includes(needle));
+          if (!hay) return false;
+        } else {
+          const val = String(getCellValue(obj, fColumna) ?? '').toLowerCase();
+          if (!val.includes(needle)) return false;
+        }
       }
 
       return true;
@@ -206,8 +264,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   }, [
     rows,
     columns,
-    documentoKey,
-    fTexto,
+    tipoPpl,
     fDocumento,
     fEstado,
     fAvance,
@@ -220,7 +277,6 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   ]);
 
   function reiniciar() {
-    setFTexto('');
     setFDocumento('');
     setFEstado('-');
     setFAvance('-');
@@ -228,17 +284,91 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     setFMunicipio('');
     setFEstablecimiento('');
     setFDefensor('');
-    setFColumna('');
+    setDefensorInput('');
+    setFColumna('__all__');
     setFValorColumna('');
   }
 
+  function aplicarDefensorPanel() {
+    setFDefensor(String(defensorInput || '').trim());
+  }
+
+  const orderedColumns = useMemo(() => {
+    const fixed = [
+      '__situacionJuridica__',
+      '__numeroIdentificacion__',
+      '__nombreUsuario__',
+      '__departamentoReclusion__',
+      '__municipioReclusion__',
+      '__estadoEntrevista__',
+    ];
+
+    const remove = new Set([
+      // Documento
+      'numeroIdentificacion',
+      'Title',
+      'title',
+      'TITLE',
+      // Nombre
+      'Nombre usuario',
+      'nombre',
+      'nombreUsuario',
+      'NombreUsuario',
+      // Situacion juridica
+      'Situación jurídica ',
+      'SituaciÃ³n jurÃ­dica ',
+      'situacionJuridica',
+      'situacionJuridicaActualizada',
+      // Departamento / municipio
+      'Departamento del lugar de reclusión',
+      'Departamento del lugar de reclusiÃ³n',
+      'departamentoLugarReclusion',
+      'departamentoEron',
+      'departamento',
+      'Municipio del lugar de reclusión',
+      'Municipio del lugar de reclusiÃ³n',
+      'municipioLugarReclusion',
+      'municipioEron',
+      'municipio',
+      // Estado (fuente)
+      'Estado entrevista',
+      'estadoEntrevista',
+      'estado',
+      // Tecnicos
+      'casos',
+      'activeCaseId',
+    ]);
+
+    const rest = (columns || []).filter((c) => !remove.has(c));
+    return [...fixed, ...rest];
+  }, [columns]);
+
+  function renderHeader(col) {
+    if (col === '__situacionJuridica__') return 'Situación jurídica';
+    if (col === '__numeroIdentificacion__') return 'Número de identificación';
+    if (col === '__nombreUsuario__') return 'Nombre usuario';
+    if (col === '__departamentoReclusion__') return 'Departamento de reclusión';
+    if (col === '__municipioReclusion__') return 'Municipio de reclusión';
+    if (col === '__estadoEntrevista__') return 'Estado';
+    return getHeaderLabel(col);
+  }
+
+  function renderCell(row, col) {
+    if (col === '__situacionJuridica__') return displayOrDash(getSituacionJuridica(row, tipoPpl));
+    if (col === '__numeroIdentificacion__') return displayOrDash(getNumeroIdentificacion(row));
+    if (col === '__nombreUsuario__') return displayOrDash(getNombreUsuario(row, tipoPpl));
+    if (col === '__departamentoReclusion__') return displayOrDash(getDepartamentoReclusion(row, tipoPpl));
+    if (col === '__municipioReclusion__') return displayOrDash(getMunicipioReclusion(row, tipoPpl));
+    if (col === '__estadoEntrevista__') {
+      const st = getEstadoEntrevista(row, tipoPpl);
+      return <span className={`badge badge--${st.color}`}>{st.label}</span>;
+    }
+    return displayOrDash(getCellValue(row, col));
+  }
+
   function handleRowClick(r) {
-    // para abrir formulario: mandamos doc + tipo
-    const doc = documentoKey ? r?.[documentoKey] : r?.numeroIdentificacion;
-
+    const doc = String(getNumeroIdentificacion(r) || '').trim();
     if (!doc) return;
-
-    // soporta tu versión anterior si solo recibías string
     if (typeof onSelectRegistro === 'function') {
       onSelectRegistro({ numeroIdentificacion: String(doc), tipoPpl });
     }
@@ -248,13 +378,12 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     <div className="card">
       <h2>Usuarios asignados</h2>
 
-      {/* Selector Condenados/Sindicados */}
       <div className="search-row" style={{ marginBottom: '0.75rem' }}>
         <div className="form-field" style={{ marginBottom: 0, minWidth: 220 }}>
           <label>Tipo de PPL</label>
           <select value={tipoPpl} onChange={(e) => setTipoPpl(e.target.value)}>
-          <option value="condenado">Condenados</option>
-          <option value="sindicado">Sindicados</option>
+            <option value="condenado">Condenados</option>
+            <option value="sindicado">Sindicados</option>
           </select>
         </div>
 
@@ -272,13 +401,12 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
       {!cargando && (
         <div className="asignados-layout">
-          {/* Panel filtros (arriba) */}
           {mostrarFiltros && (
             <div className="filter-panel">
-              <h3 className="filter-title">Filtrar</h3>
+              <h3 className="filter-title">Búsqueda</h3>
 
               <div className="form-field">
-                <label>Filtrar por columna</label>
+                <label>Buscar en</label>
                 <select
                   value={fColumna}
                   onChange={(e) => {
@@ -286,7 +414,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                     setFValorColumna('');
                   }}
                 >
-                  <option value="">-</option>
+                  <option value="__all__">Todas las columnas</option>
                   {columns.map((c) => (
                     <option key={c} value={c}>
                       {getHeaderLabel(c)}
@@ -296,55 +424,34 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
               </div>
 
               <div className="form-field">
-                <label>Buscar por palabra</label>
+                <label>¿Qué desea buscar?</label>
                 <input
                   className="input-text"
-                  placeholder={fColumna ? 'Escriba para filtrar' : 'Seleccione una columna'}
+                  placeholder={
+                    fColumna && fColumna !== '__all__'
+                      ? `Escriba ${getHeaderLabel(fColumna).toLowerCase()}`
+                      : 'Escriba una palabra (nombre, documento, proceso...)'
+                  }
                   value={fValorColumna}
                   onChange={(e) => setFValorColumna(e.target.value)}
-                  disabled={!fColumna}
                 />
               </div>
 
               <div className="form-field">
-                <label>Bússqueda global</label>
-                <input
-                  className="input-text"
-                  placeholder="Buscar en todas las columnas"
-                  value={fTexto}
-                  onChange={(e) => setFTexto(e.target.value)}
-                />
+                <label>Estado de entrevista</label>
+                <select value={fEstado} onChange={(e) => setFEstado(e.target.value)}>
+                  <option value="-">-</option>
+                  {estadosDisponibles.map((v) => (
+                    <option key={v.code} value={v.code}>
+                      {v.label}
+                    </option>
+                  ))}
+                </select>
               </div>
-
-              {documentoKey && (
-                <div className="form-field">
-                  <label>No. Documento</label>
-                  <input
-                    className="input-text"
-                    placeholder="Buscar No. ID"
-                    value={fDocumento}
-                    onChange={(e) => setFDocumento(e.target.value)}
-                  />
-                </div>
-              )}
-
-              {columns.includes('estadoEntrevista') && (
-                <div className="form-field">
-                  <label>Estado de Entrevista</label>
-                  <select value={fEstado} onChange={(e) => setFEstado(e.target.value)}>
-                    <option value="-">-</option>
-                    {estadosDisponibles.map((v) => (
-                      <option key={v} value={v}>
-                        {v}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
 
               {columns.includes('avanceFormulario') && (
                 <div className="form-field">
-                  <label>Avance Formulario</label>
+                  <label>Avance del formulario</label>
                   <select value={fAvance} onChange={(e) => setFAvance(e.target.value)}>
                     <option value="-">-</option>
                     {avancesDisponibles.map((v) => (
@@ -361,7 +468,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                   <label>Departamento del lugar de reclusión</label>
                   <input
                     className="input-text"
-                    placeholder="Buscar Departamento"
+                    placeholder="Escriba el departamento"
                     value={fDepartamento}
                     onChange={(e) => setFDepartamento(e.target.value)}
                   />
@@ -373,7 +480,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                   <label>Municipio del lugar de reclusión</label>
                   <input
                     className="input-text"
-                    placeholder="Buscar Municipio"
+                    placeholder="Escriba el municipio"
                     value={fMunicipio}
                     onChange={(e) => setFMunicipio(e.target.value)}
                   />
@@ -382,27 +489,66 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
               {columns.includes('establecimientoReclusion') && (
                 <div className="form-field">
-                  <label>Lugar de reclusiÃ³n</label>
+                  <label>Lugar de reclusión</label>
                   <input
                     className="input-text"
-                    placeholder="Buscar Lugar de reclusiÃ³n"
+                    placeholder="Escriba el lugar"
                     value={fEstablecimiento}
                     onChange={(e) => setFEstablecimiento(e.target.value)}
                   />
                 </div>
               )}
 
-              {columns.includes('defensorAsignado') && (
-                <div className="form-field">
-                  <label>Defensor</label>
-                  <input
-                    className="input-text"
-                    placeholder="Buscar Defensor"
-                    value={fDefensor}
-                    onChange={(e) => setFDefensor(e.target.value)}
-                  />
+              <div className="filter-subsection">
+                <div className="filter-subsection__title">Opcionales</div>
+
+                {documentoKey && (
+                  <div className="form-field">
+                    <label>Buscar por N° de documento</label>
+                    <input
+                      className="input-text"
+                      placeholder="Escriba el número"
+                      value={fDocumento}
+                      onChange={(e) => setFDocumento(e.target.value)}
+                    />
+                  </div>
+                )}
+
+                <div className="search-row">
+                  <div className="form-field" style={{ minWidth: 320 }}>
+                    <label>Defensor</label>
+                    <input
+                      list="defensores-registros"
+                      placeholder="Escriba o seleccione un defensor"
+                      value={defensorInput}
+                      onChange={(e) => setDefensorInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          aplicarDefensorPanel();
+                        }
+                      }}
+                    />
+                    <datalist id="defensores-registros">
+                      {defensoresOrdenados.map((d) => (
+                        <option key={d} value={d} />
+                      ))}
+                    </datalist>
+                  </div>
+
+                  <button
+                    className="primary-button primary-button--search"
+                    type="button"
+                    onClick={aplicarDefensorPanel}
+                  >
+                    Aplicar
+                  </button>
                 </div>
-              )}
+
+                {fDefensor && (
+                  <p className="hint-text">Defensor aplicado: {fDefensor}</p>
+                )}
+              </div>
 
               <button className="primary-button full" type="button" onClick={reiniciar}>
                 Limpiar filtros
@@ -410,14 +556,13 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
             </div>
           )}
 
-          {/* Tabla */}
           <div className="asignados-table">
             <div className="table-container tall">
               <table className="data-table">
                 <thead>
                   <tr>
-                    {columns.map((c) => (
-                      <th key={c}>{getHeaderLabel(c)}</th>
+                    {orderedColumns.map((c) => (
+                      <th key={c}>{renderHeader(c)}</th>
                     ))}
                   </tr>
                 </thead>
@@ -425,8 +570,8 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                 <tbody>
                   {rowsFiltradas.map((r, idx) => {
                     const key =
-                      (documentoKey && r?.[documentoKey]) ||
-                      r?.numeroIdentificacion ||
+                      (documentoKey && pickActiveCaseData(r)?.[documentoKey]) ||
+                      getNumeroIdentificacion(r) ||
                       r?.id ||
                       idx;
 
@@ -436,8 +581,8 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                         onClick={() => handleRowClick(r)}
                         className="clickable-row"
                       >
-                        {columns.map((c) => (
-                          <td key={c}>{String(getCellValue(r, c) ?? '')}</td>
+                        {orderedColumns.map((c) => (
+                          <td key={c}>{renderCell(r, c)}</td>
                         ))}
                       </tr>
                     );
@@ -445,7 +590,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
                   {rowsFiltradas.length === 0 && (
                     <tr>
-                      <td colSpan={Math.max(columns.length, 1)} style={{ textAlign: 'center', padding: '1rem' }}>
+                      <td colSpan={Math.max(orderedColumns.length, 1)} style={{ textAlign: 'center', padding: '1rem' }}>
                         No hay registros para mostrar.
                       </td>
                     </tr>

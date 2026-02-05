@@ -12,8 +12,8 @@ function Home() {
       <h2 className="home-title">Bienvenido</h2>
 
       <p className="home-text">
-        Aurora es la herramienta institucional para la gestión de atención
-        jurídica en los Establecimientos de Reclusión de Orden Nacional ERON.
+        Aurora es la herramienta institucional para la gestión de atención jurídica de personas privadas de la
+        libertad.
       </p>
       <p className="home-text">Use el menú lateral para navegar dentro del sitio.</p>
     </div>

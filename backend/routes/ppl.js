@@ -13,19 +13,35 @@ function getField(row, keys, fallback = '') {
   return fallback;
 }
 
+function pickActiveCaseData(registro) {
+  const casos = Array.isArray(registro?.casos) ? registro.casos : [];
+  if (!casos.length) return null;
+
+  const activeId = String(registro?.activeCaseId || '').trim();
+  if (activeId) {
+    const hit = casos.find((c) => String(c?.caseId) === activeId);
+    if (hit?.data) return hit.data;
+  }
+
+  const sorted = [...casos].sort((a, b) => String(a?.createdAt || '').localeCompare(String(b?.createdAt || '')));
+  const last = sorted[sorted.length - 1];
+  return last?.data || null;
+}
+
 function mapCondenado(row) {
+  const data = pickActiveCaseData(row) || row || {};
   return {
-    numeroIdentificacion: getField(row, ['numeroIdentificacion', 'Title', 'title']),
-    nombreUsuario: getField(row, ['Nombre usuario', 'nombre', 'nombreUsuario', 'NombreUsuario']),
-    lugarReclusion: getField(row, ['Establecimiento', 'establecimientoReclusion', 'lugarReclusion']),
-    departamentoLugarReclusion: getField(row, ['Departamento del lugar de reclusion', 'Departamento del lugar de reclusi?n', 'departamentoEron', 'departamento']),
-    municipioLugarReclusion: getField(row, ['Municipio del lugar de reclusion', 'Municipio del lugar de reclusi?n', 'municipioEron', 'municipio']),
-    autoridadCargo: getField(row, ['Autoridad a cargo', 'autoridadCargo', 'autoridadJudicial']),
-    numeroProceso: getField(row, ['Proceso', 'numeroProceso', 'numeroProcesoJudicial', 'proceso']),
-    situacionJuridica: getField(row, ['Situacion juridica', 'Situaci?n jur?dica ', 'Situaci?n jur?dica', 'situacionJuridica', 'situacionJuridicaActualizada']),
-    posibleActuacionJudicial: getField(row, ['posibleActuacionJudicial'], '-'),
+    numeroIdentificacion: getField(data, ['numeroIdentificacion', 'Title', 'title']),
+    nombreUsuario: getField(data, ['Nombre usuario', 'nombre', 'nombreUsuario', 'NombreUsuario']),
+    lugarReclusion: getField(data, ['Establecimiento', 'establecimientoReclusion', 'lugarReclusion']),
+    departamentoLugarReclusion: getField(data, ['Departamento del lugar de reclusion', 'Departamento del lugar de reclusi?n', 'departamentoEron', 'departamento']),
+    municipioLugarReclusion: getField(data, ['Municipio del lugar de reclusion', 'Municipio del lugar de reclusi?n', 'municipioEron', 'municipio']),
+    autoridadCargo: getField(data, ['Autoridad a cargo', 'autoridadCargo', 'autoridadJudicial']),
+    numeroProceso: getField(data, ['Proceso', 'numeroProceso', 'numeroProcesoJudicial', 'proceso']),
+    situacionJuridica: getField(data, ['Situacion juridica', 'Situaci?n jur?dica ', 'Situaci?n jur?dica', 'situacionJuridica', 'situacionJuridicaActualizada']),
+    posibleActuacionJudicial: getField(data, ['posibleActuacionJudicial'], '-'),
     defensorAsignado: getField(
-      row,
+      data,
       [
         'Defensor(a) Publico(a) Asignado para tramitar la solicitud',
         'Defensor(a) P?blico(a) Asignado para tramitar la solicitud',
@@ -33,6 +49,8 @@ function mapCondenado(row) {
       ],
       ''
     ),
+    casos: Array.isArray(row?.casos) ? row.casos : [],
+    activeCaseId: row?.activeCaseId || '',
   };
 }
 
