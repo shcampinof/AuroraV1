@@ -214,6 +214,9 @@ function FormularioEntrevistaSindicados({
       <Toast
         open={toastOpen}
         message="Aurora — Cambios guardados correctamente"
+        durationMs={3000}
+        placement="center"
+        emphasis
         onClose={() => setToastOpen(false)}
       />
 

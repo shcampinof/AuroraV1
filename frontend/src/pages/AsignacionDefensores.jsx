@@ -39,11 +39,13 @@ function AsignacionDefensores() {
   const [fDepartamento, setFDepartamento] = useState('');
   const [fMunicipio, setFMunicipio] = useState('');
   const [fLugar, setFLugar] = useState('');
+  const [fDefensorActual, setFDefensorActual] = useState('');
   const [filtrosAplicados, setFiltrosAplicados] = useState({
     documento: '',
     departamento: '',
     municipio: '',
     lugar: '',
+    defensorActual: '',
   });
 
   async function cargarPpl() {
@@ -133,6 +135,7 @@ function AsignacionDefensores() {
     const depNeedle = norm(filtrosAplicados.departamento);
     const munNeedle = norm(filtrosAplicados.municipio);
     const lugNeedle = norm(filtrosAplicados.lugar);
+    const defNeedle = norm(filtrosAplicados.defensorActual);
 
     return rowsTab.filter((r) => {
       const doc = norm(r?.numeroIdentificacion);
@@ -151,6 +154,11 @@ function AsignacionDefensores() {
       if (lugNeedle) {
         const val = norm(r?.lugarReclusion);
         if (!val.includes(lugNeedle)) return false;
+      }
+
+      if (defNeedle) {
+        const val = norm(r?.defensorAsignado);
+        if (!val.includes(defNeedle)) return false;
       }
 
       return true;
@@ -200,6 +208,7 @@ function AsignacionDefensores() {
       departamento: String(fDepartamento || '').trim(),
       municipio: String(fMunicipio || '').trim(),
       lugar: String(fLugar || '').trim(),
+      defensorActual: tab === 'reasignacion' ? String(fDefensorActual || '').trim() : '',
     });
 
     // Un solo boton para refrescar y filtrar.
@@ -212,11 +221,13 @@ function AsignacionDefensores() {
     setFDepartamento('');
     setFMunicipio('');
     setFLugar('');
+    setFDefensorActual('');
     setFiltrosAplicados({
       documento: '',
       departamento: '',
       municipio: '',
       lugar: '',
+      defensorActual: '',
     });
     setSeleccionados(new Set());
     setError('');
@@ -281,16 +292,9 @@ function AsignacionDefensores() {
     }
   }
 
-  const tabButtonStyle = (active) =>
-    active
-      ? {}
-      : { backgroundColor: '#eef3fb', color: '#345ea8', border: '2px solid #345ea8' };
-
   return (
     <div className="card">
-      <h2>
-        PAG - Asignación de Casos ({tab === 'asignacion' ? 'Asignación' : 'Reasignación'})
-      </h2>
+      <h2>PAG - Asignación de Casos</h2>
 
       <Toast
         open={toastOpen}
@@ -304,22 +308,24 @@ function AsignacionDefensores() {
 
       <div className="search-row" style={{ marginTop: '0.75rem' }}>
         <button
-          className="primary-button"
+          className={`primary-button aurora-tab ${tab === 'asignacion' ? 'active' : ''}`}
           type="button"
-          style={tabButtonStyle(tab === 'asignacion')}
+          aria-pressed={tab === 'asignacion'}
           onClick={() => {
             setTab('asignacion');
             setSeleccionados(new Set());
             setError('');
             setToastOpen(false);
+            setFDefensorActual('');
+            setFiltrosAplicados((prev) => ({ ...(prev || {}), defensorActual: '' }));
           }}
         >
           Asignación
         </button>
         <button
-          className="primary-button"
+          className={`primary-button aurora-tab ${tab === 'reasignacion' ? 'active' : ''}`}
           type="button"
-          style={tabButtonStyle(tab === 'reasignacion')}
+          aria-pressed={tab === 'reasignacion'}
           onClick={() => {
             setTab('reasignacion');
             setSeleccionados(new Set());
@@ -335,6 +341,24 @@ function AsignacionDefensores() {
         <h3 className="filter-title">Filtros</h3>
 
         <div className="grid-2" style={{ marginTop: '1rem' }}>
+          {tab === 'reasignacion' && (
+            <div className="form-field">
+              <label>Defensor público actual</label>
+              <input
+                list="pag-defensores-actual-list"
+                className="input-text"
+                placeholder="Filtrar defensor actual"
+                value={fDefensorActual}
+                onChange={(e) => setFDefensorActual(e.target.value)}
+              />
+              <datalist id="pag-defensores-actual-list">
+                {defensoresOrdenados.map((d) => (
+                  <option key={d} value={d} />
+                ))}
+              </datalist>
+            </div>
+          )}
+
           <div className="form-field">
             <label>Departamento del lugar de reclusión</label>
             <input
@@ -412,9 +436,12 @@ function AsignacionDefensores() {
         {(filtrosAplicados.departamento ||
           filtrosAplicados.municipio ||
           filtrosAplicados.lugar ||
-          filtrosAplicados.documento) && (
+          filtrosAplicados.documento ||
+          (tab === 'reasignacion' && filtrosAplicados.defensorActual)) && (
           <p className="hint-text" style={{ marginTop: '0.75rem' }}>
-            Filtros aplicados: {filtrosAplicados.departamento || '-'} / {filtrosAplicados.municipio || '-'} /{' '}
+            Filtros aplicados:{' '}
+            {tab === 'reasignacion' ? `${filtrosAplicados.defensorActual || '-'} / ` : ''}
+            {filtrosAplicados.departamento || '-'} / {filtrosAplicados.municipio || '-'} /{' '}
             {filtrosAplicados.lugar || '-'} / {filtrosAplicados.documento || '-'}
           </p>
         )}

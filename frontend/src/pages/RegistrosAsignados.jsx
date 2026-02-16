@@ -1,14 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getDefensores, getDefensoresCondenados, getPplListado } from '../services/api.js';
-import { getEstadoEntrevista, pickActiveCaseData } from '../utils/entrevistaEstado.js';
-import {
-  displayOrDash,
-  getDepartamentoReclusion,
-  getMunicipioReclusion,
-  getNombreUsuario,
-  getNumeroIdentificacion,
-  getSituacionJuridica,
-} from '../utils/pplDisplay.js';
+import { getDefensores, getPplListado } from '../services/api.js';
+import { pickActiveCaseData } from '../utils/entrevistaEstado.js';
+import { displayOrDash } from '../utils/pplDisplay.js';
+import { evaluateAuroraRules } from '../utils/evaluateAuroraRules.ts';
 
 function prettifyHeader(key) {
   if (!key) return '';
@@ -54,6 +48,8 @@ function getCellValue(row, key) {
 function findDocumentoKey(columns) {
   if (!Array.isArray(columns)) return null;
   const candidates = [
+    'Número de identificación',
+    'Numero de identificacion',
     'numeroIdentificacion',
     'documento',
     'cedula',
@@ -71,42 +67,280 @@ function findDocumentoKey(columns) {
   return fallback || null;
 }
 
+function normalize(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function normalizeEstado(value) {
+  return String(value ?? '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function getEstadoClass(estado) {
+  const key = normalizeEstado(estado);
+  if (key === 'analizar el caso') return 'estado--verde';
+  if (key === 'entrevistar al usuario') return 'estado--amarillo';
+  if (key === 'presentar solicitud') return 'estado--rojo';
+  if (key === 'pendiente decision') return 'estado--azul';
+  if (key === 'caso cerrado') return 'estado--gris';
+  return '';
+}
+
+function distinctSorted(rows, getter) {
+  const map = new Map();
+  (rows || []).forEach((row) => {
+    const val = String(getter(row) || '').trim();
+    if (!val) return;
+    const key = val.toLowerCase();
+    if (!map.has(key)) map.set(key, val);
+  });
+  return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
+}
+
+function DropdownField({ label, value, onChange, options, searchable = false, listId }) {
+  const normalizedOptions = (Array.isArray(options) ? options : []).map((opt) => {
+    if (opt && typeof opt === 'object') {
+      return {
+        value: String(opt.value ?? ''),
+        label: String(opt.label ?? opt.value ?? ''),
+      };
+    }
+    return {
+      value: String(opt ?? ''),
+      label: String(opt ?? ''),
+    };
+  });
+
+  return (
+    <div className="form-field">
+      <label>{label}</label>
+      {searchable ? (
+        <>
+          <input
+            list={listId}
+            className="input-text"
+            placeholder="Seleccione"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+          />
+          <datalist id={listId}>
+            {normalizedOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </datalist>
+        </>
+      ) : (
+        <select value={value} onChange={(e) => onChange(e.target.value)}>
+          <option value="">Todos</option>
+          {normalizedOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
+function InputField({
+  label,
+  value,
+  onChange,
+  placeholder = 'Escriba para buscar',
+  listId,
+  options,
+  type = 'text',
+  inputMode,
+  pattern,
+}) {
+  const normalizedOptions = (Array.isArray(options) ? options : []).map((opt) => String(opt ?? '').trim()).filter(Boolean);
+  return (
+    <div className="form-field">
+      <label>{label}</label>
+      <input
+        list={listId}
+        className="input-text"
+        type={type}
+        inputMode={inputMode}
+        pattern={pattern}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {listId && normalizedOptions.length > 0 && (
+        <datalist id={listId}>
+          {normalizedOptions.map((opt) => (
+            <option key={opt} value={opt} />
+          ))}
+        </datalist>
+      )}
+    </div>
+  );
+}
+
+function getColumnWidth(col) {
+  const widths = {
+    __situacionJuridica__: 110,
+    __numeroIdentificacion__: 160,
+    __nombreUsuario__: 180,
+    __defensor__: 140,
+    __lugarPrivacion__: 180,
+    __estadoTramite__: 120,
+    __departamentoReclusion__: 185,
+    __municipioReclusion__: 185,
+  };
+  return widths[col] || 170;
+}
+
 export default function RegistrosAsignados({ onSelectRegistro }) {
-  const [tipoPpl, setTipoPpl] = useState('condenado');
   const [cargando, setCargando] = useState(true);
 
   const [columns, setColumns] = useState([]);
   const [rows, setRows] = useState([]);
 
   const [mostrarFiltros, setMostrarFiltros] = useState(true);
-  const [fDocumento, setFDocumento] = useState('');
-  const [fEstado, setFEstado] = useState('-');
-  const [fAvance, setFAvance] = useState('-');
-  const [fDepartamento, setFDepartamento] = useState('');
-  const [fMunicipio, setFMunicipio] = useState('');
-  const [fEstablecimiento, setFEstablecimiento] = useState('');
-  const [fDefensor, setFDefensor] = useState('');
-  const [fColumna, setFColumna] = useState('__all__'); // '__all__' o nombre de columna
-  const [fValorColumna, setFValorColumna] = useState('');
+  const [filtrosDraft, setFiltrosDraft] = useState({
+    defensor: '',
+    nombre: '',
+    documento: '',
+    lugar: '',
+    departamento: '',
+    municipio: '',
+    estado: '',
+  });
+  const [filtrosAplicados, setFiltrosAplicados] = useState({
+    defensor: '',
+    nombre: '',
+    documento: '',
+    lugar: '',
+    departamento: '',
+    municipio: '',
+    estado: '',
+  });
+  const [filtroAdicionalSeleccionado, setFiltroAdicionalSeleccionado] = useState('');
 
-  const [defensorInput, setDefensorInput] = useState('');
   const [defensores, setDefensores] = useState([]);
+
+  function getNumeroIdentificacionValue(obj) {
+    const data = pickActiveCaseData(obj);
+    return (
+      data?.['Número de identificación'] ??
+      data?.['Numero de identificacion'] ??
+      data?.numeroIdentificacion ??
+      data?.Title ??
+      data?.title ??
+      ''
+    );
+  }
+
+  function getNombreUsuarioValue(obj) {
+    const data = pickActiveCaseData(obj);
+    return data?.Nombre ?? data?.['Nombre usuario'] ?? data?.nombreUsuario ?? data?.nombre ?? '';
+  }
+
+  function getSituacionJuridicaValue(obj) {
+    const data = pickActiveCaseData(obj);
+    return (
+      data?.['Situación jurídica actualizada (de conformidad con la rama judicial)'] ??
+      data?.['Situación jurídica'] ??
+      data?.situacionJuridicaActualizada ??
+      data?.situacionJuridica ??
+      ''
+    );
+  }
+
+  function getDefensorValue(obj) {
+    const data = pickActiveCaseData(obj);
+    return (
+      data?.['Defensor(a) Público(a) Asignado para tramitar la solicitud'] ??
+      data?.['Defensor(a) Publico(a) Asignado para tramitar la solicitud'] ??
+      data?.defensorAsignado ??
+      data?.defensor ??
+      ''
+    );
+  }
+
+  function getLugarPrivacionValue(obj) {
+    const data = pickActiveCaseData(obj);
+    return (
+      data?.['Nombre del lugar de privación de la libertad'] ??
+      data?.establecimientoReclusion ??
+      data?.Establecimiento ??
+      data?.lugarReclusion ??
+      ''
+    );
+  }
+
+  function getDepartamentoPrivacionValue(obj) {
+    const data = pickActiveCaseData(obj);
+    return (
+      data?.['Departamento del lugar de privación de la libertad'] ??
+      data?.departamentoLugarReclusion ??
+      data?.departamentoEron ??
+      data?.departamento ??
+      ''
+    );
+  }
+
+  function getMunicipioPrivacionValue(obj) {
+    const data = pickActiveCaseData(obj);
+    return (
+      data?.['Distrito/municipio del lugar de privación de la libertad'] ??
+      data?.municipioLugarReclusion ??
+      data?.municipioEron ??
+      data?.municipio ??
+      ''
+    );
+  }
+
+  function getEstadoTramiteValue(obj) {
+    const data = pickActiveCaseData(obj);
+    const derived = evaluateAuroraRules({ answers: data || {} })?.derivedStatus;
+    if (derived) return derived;
+    return data?.['Estado del caso'] ?? data?.['Estado del trámite'] ?? data?.estado ?? data?.estadoEntrevista ?? data?.['Estado entrevista'] ?? '';
+  }
+
+  function setFiltroDraft(key, value) {
+    setFiltrosDraft((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function seleccionarFiltroAdicional(value) {
+    const selected = String(value || '').trim();
+    setFiltroAdicionalSeleccionado(selected);
+    setFiltrosDraft((prev) => ({
+      ...prev,
+      nombre: selected === 'nombre' ? prev.nombre : '',
+      lugar: selected === 'lugar' ? prev.lugar : '',
+      departamento: selected === 'departamento' ? prev.departamento : '',
+      municipio: selected === 'municipio' ? prev.municipio : '',
+      estado: selected === 'estado' ? prev.estado : '',
+    }));
+    setFiltrosAplicados((prev) => ({
+      ...prev,
+      nombre: selected === 'nombre' ? prev.nombre : '',
+      lugar: selected === 'lugar' ? prev.lugar : '',
+      departamento: selected === 'departamento' ? prev.departamento : '',
+      municipio: selected === 'municipio' ? prev.municipio : '',
+      estado: selected === 'estado' ? prev.estado : '',
+    }));
+  }
 
   useEffect(() => {
     let alive = true;
 
     async function cargarDefensores() {
       try {
-        const [fromCsv, fromCondenados] = await Promise.all([
-          getDefensores(), // backend/data/defensores.csv (opcional)
-          getDefensoresCondenados(), // distinct desde condenados.csv
-        ]);
-
+        const fromCsv = await getDefensores();
         const a = Array.isArray(fromCsv?.defensores) ? fromCsv.defensores : [];
-        const b = Array.isArray(fromCondenados?.defensores) ? fromCondenados.defensores : [];
 
         const map = new Map();
-        [...a, ...b].forEach((name) => {
+        a.forEach((name) => {
           const val = String(name || '').trim();
           if (!val) return;
           const key = val.toLowerCase();
@@ -132,7 +366,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     async function cargar() {
       setCargando(true);
       try {
-        const data = await getPplListado(tipoPpl);
+        const data = await getPplListado();
         if (!alive) return;
 
         const cols = Array.isArray(data?.columns) ? data.columns : [];
@@ -170,7 +404,27 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     return () => {
       alive = false;
     };
-  }, [tipoPpl]);
+  }, []);
+
+  useEffect(() => {
+    setDefensores((prev) => {
+      const base = Array.isArray(prev) ? prev : [];
+      const set = new Set(base.map((d) => String(d || '').trim()).filter(Boolean).map((d) => d.toLowerCase()));
+      const merged = [...base];
+
+      rows.forEach((r) => {
+        const val = String(getDefensorValue(r) || '').trim();
+        if (!val) return;
+        const key = val.toLowerCase();
+        if (set.has(key)) return;
+        set.add(key);
+        merged.push(val);
+      });
+
+      merged.sort((a, b) => a.localeCompare(b));
+      return merged;
+    });
+  }, [rows]);
 
   const defensoresOrdenados = useMemo(() => {
     return [...defensores].sort((a, b) => a.localeCompare(b));
@@ -178,119 +432,117 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
   const documentoKey = useMemo(() => findDocumentoKey(columns), [columns]);
 
-  const estadosDisponibles = useMemo(() => {
-    const map = new Map();
-    rows.forEach((r) => {
-      const st = getEstadoEntrevista(r, tipoPpl);
-      if (st?.code) map.set(st.code, st.label);
-    });
-    return Array.from(map.entries()).map(([code, label]) => ({ code, label }));
-  }, [rows, tipoPpl]);
+  const nombresDisponibles = useMemo(() => distinctSorted(rows, getNombreUsuarioValue), [rows]);
+  const documentosDisponibles = useMemo(() => distinctSorted(rows, getNumeroIdentificacionValue), [rows]);
+  const lugaresDisponibles = useMemo(() => distinctSorted(rows, getLugarPrivacionValue), [rows]);
+  const departamentosDisponibles = useMemo(() => distinctSorted(rows, getDepartamentoPrivacionValue), [rows]);
 
-  const avancesDisponibles = useMemo(() => {
-    if (!columns.includes('avanceFormulario')) return [];
-    const set = new Set(rows.map((r) => String(r?.avanceFormulario ?? '')).filter(Boolean));
-    return Array.from(set);
-  }, [rows, columns]);
+  const estadosDisponibles = useMemo(() => {
+    return distinctSorted(rows, getEstadoTramiteValue);
+  }, [rows]);
+
+  const municipiosDisponiblesDraft = useMemo(() => {
+    const depNeedle = normalize(filtrosDraft.departamento);
+    const candidates = depNeedle
+      ? rows.filter((r) => normalize(getDepartamentoPrivacionValue(r)) === depNeedle)
+      : rows;
+    return distinctSorted(candidates, getMunicipioPrivacionValue);
+  }, [rows, filtrosDraft.departamento]);
+
+  useEffect(() => {
+    if (!filtrosDraft.municipio) return;
+    const exists = municipiosDisponiblesDraft.some((m) => normalize(m) === normalize(filtrosDraft.municipio));
+    if (!exists) {
+      setFiltrosDraft((prev) => ({ ...prev, municipio: '' }));
+    }
+  }, [filtrosDraft.municipio, municipiosDisponiblesDraft]);
 
   const rowsFiltradas = useMemo(() => {
-    const docNeedle = fDocumento.trim();
-    const needle = fValorColumna.trim().toLowerCase();
-
     return rows.filter((r) => {
       const obj = r || {};
-      const data = pickActiveCaseData(obj);
 
-      if (docNeedle) {
-        const docVal = String(getNumeroIdentificacion(obj) ?? '');
-        if (!docVal.includes(docNeedle)) return false;
-      }
-
-      if (fEstado !== '-') {
-        const st = getEstadoEntrevista(obj, tipoPpl);
-        if (String(st?.code || '') !== fEstado) return false;
-      }
-      if (fAvance !== '-' && columns.includes('avanceFormulario')) {
-        if (String(data?.avanceFormulario ?? '') !== fAvance) return false;
+      if (
+        filtrosAplicados.documento &&
+        !normalize(getNumeroIdentificacionValue(obj)).includes(normalize(filtrosAplicados.documento))
+      ) {
+        return false;
       }
 
-      if (fDepartamento) {
-        if (
-          !String(getDepartamentoReclusion(obj, tipoPpl) ?? '')
-            .toLowerCase()
-            .includes(fDepartamento.trim().toLowerCase())
-        )
-          return false;
-      }
-      if (fMunicipio) {
-        if (
-          !String(getMunicipioReclusion(obj, tipoPpl) ?? '')
-            .toLowerCase()
-            .includes(fMunicipio.trim().toLowerCase())
-        )
-          return false;
-      }
-      if (fEstablecimiento) {
-        if (
-          !String(data?.establecimientoReclusion ?? data?.Establecimiento ?? '')
-            .toLowerCase()
-            .includes(fEstablecimiento.trim().toLowerCase())
-        )
-          return false;
-      }
-      if (fDefensor) {
-        const defVal =
-          data?.defensorAsignado ??
-          data?.['Defensor(a) Público(a) Asignado para tramitar la solicitud'] ??
-          data?.['Defensor(a) PÃºblico(a) Asignado para tramitar la solicitud'] ??
-          '';
-        if (!String(defVal ?? '').toLowerCase().includes(fDefensor.trim().toLowerCase())) {
-          return false;
-        }
+      if (filtrosAplicados.nombre && !normalize(getNombreUsuarioValue(obj)).includes(normalize(filtrosAplicados.nombre))) {
+        return false;
       }
 
-      if (needle) {
-        if (fColumna === '__all__' || !fColumna) {
-          const hay = columns.some((c) => String(getCellValue(obj, c) ?? '').toLowerCase().includes(needle));
-          if (!hay) return false;
-        } else {
-          const val = String(getCellValue(obj, fColumna) ?? '').toLowerCase();
-          if (!val.includes(needle)) return false;
-        }
+      if (filtrosAplicados.defensor && !normalize(getDefensorValue(obj)).includes(normalize(filtrosAplicados.defensor))) {
+        return false;
+      }
+
+      if (filtrosAplicados.lugar && !normalize(getLugarPrivacionValue(obj)).includes(normalize(filtrosAplicados.lugar))) {
+        return false;
+      }
+
+      if (
+        filtrosAplicados.departamento &&
+        !normalize(getDepartamentoPrivacionValue(obj)).includes(normalize(filtrosAplicados.departamento))
+      ) {
+        return false;
+      }
+
+      if (
+        filtrosAplicados.municipio &&
+        !normalize(getMunicipioPrivacionValue(obj)).includes(normalize(filtrosAplicados.municipio))
+      ) {
+        return false;
+      }
+
+      if (filtrosAplicados.estado && normalize(getEstadoTramiteValue(obj)) !== normalize(filtrosAplicados.estado)) {
+        return false;
       }
 
       return true;
     });
-  }, [
-    rows,
-    columns,
-    tipoPpl,
-    fDocumento,
-    fEstado,
-    fAvance,
-    fDepartamento,
-    fMunicipio,
-    fEstablecimiento,
-    fDefensor,
-    fColumna,
-    fValorColumna,
-  ]);
+  }, [rows, filtrosAplicados]);
 
-  function reiniciar() {
-    setFDocumento('');
-    setFEstado('-');
-    setFAvance('-');
-    setFDepartamento('');
-    setFMunicipio('');
-    setFEstablecimiento('');
-    setFDefensor('');
-    setDefensorInput('');
-    setFColumna('__all__');
-    setFValorColumna('');
+  function aplicarFiltros() {
+    const next = {
+      defensor: String(filtrosDraft.defensor || '').trim(),
+      nombre: String(filtrosDraft.nombre || '').trim(),
+      documento: String(filtrosDraft.documento || '').trim(),
+      lugar: String(filtrosDraft.lugar || '').trim(),
+      departamento: String(filtrosDraft.departamento || '').trim(),
+      municipio: String(filtrosDraft.municipio || '').trim(),
+      estado: String(filtrosDraft.estado || '').trim(),
+    };
+
+    if (next.departamento) {
+      const depKey = normalize(next.departamento);
+      const validMunicipios = new Set(
+        rows
+          .filter((r) => normalize(getDepartamentoPrivacionValue(r)) === depKey)
+          .map((r) => normalize(getMunicipioPrivacionValue(r)))
+          .filter(Boolean)
+      );
+      if (next.municipio && !validMunicipios.has(normalize(next.municipio))) {
+        next.municipio = '';
+      }
+    }
+
+    setFiltrosDraft(next);
+    setFiltrosAplicados(next);
   }
 
-  function aplicarDefensorPanel() {
-    setFDefensor(String(defensorInput || '').trim());
+  function reiniciar() {
+    const empty = {
+      defensor: '',
+      nombre: '',
+      documento: '',
+      lugar: '',
+      departamento: '',
+      municipio: '',
+      estado: '',
+    };
+    setFiltrosDraft(empty);
+    setFiltrosAplicados(empty);
+    setFiltroAdicionalSeleccionado('');
   }
 
   const orderedColumns = useMemo(() => {
@@ -298,43 +550,48 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       '__situacionJuridica__',
       '__numeroIdentificacion__',
       '__nombreUsuario__',
+      '__defensor__',
+      '__lugarPrivacion__',
+      '__estadoTramite__',
       '__departamentoReclusion__',
       '__municipioReclusion__',
-      '__estadoEntrevista__',
     ];
 
     const remove = new Set([
-      // Documento
+      'Situación jurídica',
+      'Situación jurídica actualizada (de conformidad con la rama judicial)',
+      'Número de identificación',
+      'Nombre',
+      'Defensor(a) Público(a) Asignado para tramitar la solicitud',
+      'Nombre del lugar de privación de la libertad',
+      'Departamento del lugar de privación de la libertad',
+      'Distrito/municipio del lugar de privación de la libertad',
+      'Estado del caso',
       'numeroIdentificacion',
       'Title',
       'title',
       'TITLE',
-      // Nombre
       'Nombre usuario',
       'nombre',
       'nombreUsuario',
       'NombreUsuario',
-      // Situacion juridica
       'Situación jurídica ',
-      'SituaciÃ³n jurÃ­dica ',
+      'Situación jurídica ',
       'situacionJuridica',
       'situacionJuridicaActualizada',
-      // Departamento / municipio
       'Departamento del lugar de reclusión',
-      'Departamento del lugar de reclusiÃ³n',
+      'Departamento del lugar de reclusión',
       'departamentoLugarReclusion',
       'departamentoEron',
       'departamento',
       'Municipio del lugar de reclusión',
-      'Municipio del lugar de reclusiÃ³n',
+      'Municipio del lugar de reclusión',
       'municipioLugarReclusion',
       'municipioEron',
       'municipio',
-      // Estado (fuente)
       'Estado entrevista',
       'estadoEntrevista',
       'estado',
-      // Tecnicos
       'casos',
       'activeCaseId',
     ]);
@@ -344,33 +601,52 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   }, [columns]);
 
   function renderHeader(col) {
-    if (col === '__situacionJuridica__') return 'Situación jurídica';
-    if (col === '__numeroIdentificacion__') return 'Número de identificación';
-    if (col === '__nombreUsuario__') return 'Nombre usuario';
-    if (col === '__departamentoReclusion__') return 'Departamento de reclusión';
-    if (col === '__municipioReclusion__') return 'Municipio de reclusión';
-    if (col === '__estadoEntrevista__') return 'Estado';
+    if (col === '__situacionJuridica__') return 'SITUACIÓN JURÍDICA';
+    if (col === '__numeroIdentificacion__') return 'NÚMERO DE IDENTIFICACIÓN';
+    if (col === '__nombreUsuario__') return 'NOMBRE USUARIO';
+    if (col === '__defensor__') return 'DEFENSOR';
+    if (col === '__lugarPrivacion__') return 'Nombre del lugar de privación de la libertad';
+    if (col === '__estadoTramite__') return 'ESTADO';
+    if (col === '__departamentoReclusion__') return 'DEPARTAMENTO';
+    if (col === '__municipioReclusion__') return 'MUNICIPIO';
     return getHeaderLabel(col);
   }
 
   function renderCell(row, col) {
-    if (col === '__situacionJuridica__') return displayOrDash(getSituacionJuridica(row, tipoPpl));
-    if (col === '__numeroIdentificacion__') return displayOrDash(getNumeroIdentificacion(row));
-    if (col === '__nombreUsuario__') return displayOrDash(getNombreUsuario(row, tipoPpl));
-    if (col === '__departamentoReclusion__') return displayOrDash(getDepartamentoReclusion(row, tipoPpl));
-    if (col === '__municipioReclusion__') return displayOrDash(getMunicipioReclusion(row, tipoPpl));
-    if (col === '__estadoEntrevista__') {
-      const st = getEstadoEntrevista(row, tipoPpl);
-      return <span className={`badge badge--${st.color}`}>{st.label}</span>;
+    if (col === '__situacionJuridica__') return displayOrDash(getSituacionJuridicaValue(row));
+    if (col === '__numeroIdentificacion__') return displayOrDash(getNumeroIdentificacionValue(row));
+    if (col === '__nombreUsuario__') return displayOrDash(getNombreUsuarioValue(row));
+    if (col === '__defensor__') return displayOrDash(getDefensorValue(row));
+    if (col === '__lugarPrivacion__') return displayOrDash(getLugarPrivacionValue(row));
+    if (col === '__estadoTramite__') {
+      const estado = String(getEstadoTramiteValue(row) || '').trim();
+      if (!estado) return '—';
+      const estadoClass = getEstadoClass(estado);
+      if (!estadoClass) return estado;
+      return <span className={`estadoBadge ${estadoClass}`}>{estado}</span>;
     }
+    if (col === '__departamentoReclusion__') return displayOrDash(getDepartamentoPrivacionValue(row));
+    if (col === '__municipioReclusion__') return displayOrDash(getMunicipioPrivacionValue(row));
     return displayOrDash(getCellValue(row, col));
   }
 
+  function getCellTitle(row, col) {
+    if (col === '__situacionJuridica__') return String(displayOrDash(getSituacionJuridicaValue(row)));
+    if (col === '__numeroIdentificacion__') return String(displayOrDash(getNumeroIdentificacionValue(row)));
+    if (col === '__nombreUsuario__') return String(displayOrDash(getNombreUsuarioValue(row)));
+    if (col === '__defensor__') return String(displayOrDash(getDefensorValue(row)));
+    if (col === '__lugarPrivacion__') return String(displayOrDash(getLugarPrivacionValue(row)));
+    if (col === '__estadoTramite__') return String(displayOrDash(getEstadoTramiteValue(row)));
+    if (col === '__departamentoReclusion__') return String(displayOrDash(getDepartamentoPrivacionValue(row)));
+    if (col === '__municipioReclusion__') return String(displayOrDash(getMunicipioPrivacionValue(row)));
+    return String(displayOrDash(getCellValue(row, col)));
+  }
+
   function handleRowClick(r) {
-    const doc = String(getNumeroIdentificacion(r) || '').trim();
+    const doc = String(getNumeroIdentificacionValue(r) || '').trim();
     if (!doc) return;
     if (typeof onSelectRegistro === 'function') {
-      onSelectRegistro({ numeroIdentificacion: String(doc), tipoPpl });
+      onSelectRegistro({ numeroIdentificacion: String(doc) });
     }
   }
 
@@ -379,14 +655,6 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       <h2>Usuarios asignados</h2>
 
       <div className="search-row" style={{ marginBottom: '0.75rem' }}>
-        <div className="form-field" style={{ marginBottom: 0, minWidth: 220 }}>
-          <label>Tipo de PPL</label>
-          <select value={tipoPpl} onChange={(e) => setTipoPpl(e.target.value)}>
-            <option value="condenado">Condenados</option>
-            <option value="sindicado">Sindicados</option>
-          </select>
-        </div>
-
         <button
           className="primary-button primary-button--search"
           type="button"
@@ -405,164 +673,120 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
             <div className="filter-panel">
               <h3 className="filter-title">Búsqueda</h3>
 
-              <div className="form-field">
-                <label>Buscar en</label>
-                <select
-                  value={fColumna}
-                  onChange={(e) => {
-                    setFColumna(e.target.value);
-                    setFValorColumna('');
-                  }}
-                >
-                  <option value="__all__">Todas las columnas</option>
-                  {columns.map((c) => (
-                    <option key={c} value={c}>
-                      {getHeaderLabel(c)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <DropdownField
+                label="Defensor"
+                value={filtrosDraft.defensor}
+                onChange={(value) => setFiltroDraft('defensor', value)}
+                options={defensoresOrdenados}
+                searchable={defensoresOrdenados.length > 20}
+                listId="filtro-defensor"
+              />
 
-              <div className="form-field">
-                <label>¿Qué desea buscar?</label>
-                <input
-                  className="input-text"
-                  placeholder={
-                    fColumna && fColumna !== '__all__'
-                      ? `Escriba ${getHeaderLabel(fColumna).toLowerCase()}`
-                      : 'Escriba una palabra (nombre, documento, proceso...)'
-                  }
-                  value={fValorColumna}
-                  onChange={(e) => setFValorColumna(e.target.value)}
+              <InputField
+                label="Número de identificación"
+                value={filtrosDraft.documento}
+                onChange={(value) => setFiltroDraft('documento', value)}
+                type="number"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                placeholder="Ingrese cédula"
+              />
+
+              <DropdownField
+                label="Filtrar"
+                value={filtroAdicionalSeleccionado}
+                onChange={seleccionarFiltroAdicional}
+                options={[
+                  { value: 'nombre', label: 'Nombre' },
+                  { value: 'lugar', label: 'Nombre del lugar de privación de la libertad' },
+                  { value: 'departamento', label: 'Departamento del lugar de privación de la libertad' },
+                  { value: 'municipio', label: 'Distrito/municipio del lugar de privación de la libertad' },
+                  { value: 'estado', label: 'Estado del trámite' },
+                ]}
+              />
+
+              {filtroAdicionalSeleccionado === 'nombre' && (
+                <InputField
+                  label="Nombre"
+                  value={filtrosDraft.nombre}
+                  onChange={(value) => setFiltroDraft('nombre', value)}
+                  placeholder="Ingrese nombre"
                 />
+              )}
+
+              {filtroAdicionalSeleccionado === 'lugar' && (
+                <InputField
+                  label="Nombre del lugar de privación de la libertad"
+                  value={filtrosDraft.lugar}
+                  onChange={(value) => setFiltroDraft('lugar', value)}
+                  options={lugaresDisponibles}
+                  listId="filtro-lugar"
+                  placeholder="Ingrese lugar"
+                />
+              )}
+
+              {filtroAdicionalSeleccionado === 'departamento' && (
+                <InputField
+                  label="Departamento del lugar de privación de la libertad"
+                  value={filtrosDraft.departamento}
+                  onChange={(value) =>
+                    setFiltrosDraft((prev) => ({
+                      ...prev,
+                      departamento: value,
+                      municipio: '',
+                    }))
+                  }
+                  options={departamentosDisponibles}
+                  listId="filtro-departamento"
+                  placeholder="Ingrese departamento"
+                />
+              )}
+
+              {filtroAdicionalSeleccionado === 'municipio' && (
+                <InputField
+                  label="Distrito/municipio del lugar de privación de la libertad"
+                  value={filtrosDraft.municipio}
+                  onChange={(value) => setFiltroDraft('municipio', value)}
+                  options={municipiosDisponiblesDraft}
+                  listId="filtro-municipio"
+                  placeholder="Ingrese distrito/municipio"
+                />
+              )}
+
+              {filtroAdicionalSeleccionado === 'estado' && (
+                <DropdownField
+                  label="Estado del trámite"
+                  value={filtrosDraft.estado}
+                  onChange={(value) => setFiltroDraft('estado', value)}
+                  options={estadosDisponibles}
+                />
+              )}
+
+              <div className="search-row" style={{ marginTop: '0.75rem' }}>
+                <button className="primary-button primary-button--search" type="button" onClick={aplicarFiltros}>
+                  Buscar
+                </button>
+                <button className="primary-button" type="button" onClick={reiniciar}>
+                  Limpiar
+                </button>
               </div>
-
-              <div className="form-field">
-                <label>Estado de entrevista</label>
-                <select value={fEstado} onChange={(e) => setFEstado(e.target.value)}>
-                  <option value="-">-</option>
-                  {estadosDisponibles.map((v) => (
-                    <option key={v.code} value={v.code}>
-                      {v.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {columns.includes('avanceFormulario') && (
-                <div className="form-field">
-                  <label>Avance del formulario</label>
-                  <select value={fAvance} onChange={(e) => setFAvance(e.target.value)}>
-                    <option value="-">-</option>
-                    {avancesDisponibles.map((v) => (
-                      <option key={v} value={v}>
-                        {v}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {columns.includes('departamentoEron') && (
-                <div className="form-field">
-                  <label>Departamento del lugar de reclusión</label>
-                  <input
-                    className="input-text"
-                    placeholder="Escriba el departamento"
-                    value={fDepartamento}
-                    onChange={(e) => setFDepartamento(e.target.value)}
-                  />
-                </div>
-              )}
-
-              {columns.includes('municipioEron') && (
-                <div className="form-field">
-                  <label>Municipio del lugar de reclusión</label>
-                  <input
-                    className="input-text"
-                    placeholder="Escriba el municipio"
-                    value={fMunicipio}
-                    onChange={(e) => setFMunicipio(e.target.value)}
-                  />
-                </div>
-              )}
-
-              {columns.includes('establecimientoReclusion') && (
-                <div className="form-field">
-                  <label>Lugar de reclusión</label>
-                  <input
-                    className="input-text"
-                    placeholder="Escriba el lugar"
-                    value={fEstablecimiento}
-                    onChange={(e) => setFEstablecimiento(e.target.value)}
-                  />
-                </div>
-              )}
-
-              <div className="filter-subsection">
-                <div className="filter-subsection__title">Opcionales</div>
-
-                {documentoKey && (
-                  <div className="form-field">
-                    <label>Buscar por N° de documento</label>
-                    <input
-                      className="input-text"
-                      placeholder="Escriba el número"
-                      value={fDocumento}
-                      onChange={(e) => setFDocumento(e.target.value)}
-                    />
-                  </div>
-                )}
-
-                <div className="search-row">
-                  <div className="form-field" style={{ minWidth: 320 }}>
-                    <label>Defensor</label>
-                    <input
-                      list="defensores-registros"
-                      placeholder="Escriba o seleccione un defensor"
-                      value={defensorInput}
-                      onChange={(e) => setDefensorInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          aplicarDefensorPanel();
-                        }
-                      }}
-                    />
-                    <datalist id="defensores-registros">
-                      {defensoresOrdenados.map((d) => (
-                        <option key={d} value={d} />
-                      ))}
-                    </datalist>
-                  </div>
-
-                  <button
-                    className="primary-button primary-button--search"
-                    type="button"
-                    onClick={aplicarDefensorPanel}
-                  >
-                    Aplicar
-                  </button>
-                </div>
-
-                {fDefensor && (
-                  <p className="hint-text">Defensor aplicado: {fDefensor}</p>
-                )}
-              </div>
-
-              <button className="primary-button full" type="button" onClick={reiniciar}>
-                Limpiar filtros
-              </button>
             </div>
           )}
 
           <div className="asignados-table">
             <div className="table-container tall">
-              <table className="data-table">
+              <table className="data-table aurora-table">
+                <colgroup>
+                  {orderedColumns.map((c) => (
+                    <col key={`col-${c}`} style={{ width: `${getColumnWidth(c)}px` }} />
+                  ))}
+                </colgroup>
                 <thead>
                   <tr>
                     {orderedColumns.map((c) => (
-                      <th key={c}>{renderHeader(c)}</th>
+                      <th key={c} title={renderHeader(c)}>
+                        <span className="aurora-th-label">{renderHeader(c)}</span>
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -571,7 +795,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                   {rowsFiltradas.map((r, idx) => {
                     const key =
                       (documentoKey && pickActiveCaseData(r)?.[documentoKey]) ||
-                      getNumeroIdentificacion(r) ||
+                      getNumeroIdentificacionValue(r) ||
                       r?.id ||
                       idx;
 
@@ -582,7 +806,9 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                         className="clickable-row"
                       >
                         {orderedColumns.map((c) => (
-                          <td key={c}>{renderCell(r, c)}</td>
+                          <td key={c} title={getCellTitle(r, c)}>
+                            {renderCell(r, c)}
+                          </td>
                         ))}
                       </tr>
                     );

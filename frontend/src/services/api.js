@@ -10,9 +10,10 @@ const API_BASE =
 // =====================
 
 // LISTADO
-// GET /api/ppl?tipo=condenado|sindicado
-export async function getPplListado(tipo = 'condenado') {
-  const res = await fetch(`${API_BASE}/ppl?tipo=${encodeURIComponent(tipo)}`);
+// GET /api/ppl?tipo=condenado|sindicado (opcional). Sin `tipo` -> devuelve todos.
+export async function getPplListado(tipo) {
+  const qs = tipo ? `?tipo=${encodeURIComponent(tipo)}` : '';
+  const res = await fetch(`${API_BASE}/ppl${qs}`);
   if (!res.ok) throw new Error('Error consultando PPL');
   return res.json(); // { tipo, columns, rows }
 }

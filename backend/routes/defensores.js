@@ -1,15 +1,15 @@
 const express = require('express');
 const defensores = require('../db/defensores.repo');
-const condenados = require('../db/condenados.repo');
+const consolidado = require('../db/consolidado.repo');
 
 const router = express.Router();
 
 // GET /api/defensores
-// ?source=condenados -> lista unica desde condenados.csv
+// ?source=condenados -> lista unica desde Datosconsolidados.csv (solo condenados)
 router.get('/', (req, res) => {
   const source = String(req.query.source || '').trim().toLowerCase();
   if (source === 'condenados') {
-    return res.json({ defensores: condenados.getDefensoresDistinct() });
+    return res.json({ defensores: consolidado.getDefensoresDistinct({ tipo: 'condenado' }) });
   }
   return res.json({ defensores: defensores.getAll() });
 });
@@ -19,7 +19,7 @@ router.get('/casos', (req, res) => {
   const defensor = String(req.query.defensor || '').trim();
   if (!defensor) return res.status(400).json({ message: 'Defensor requerido' });
 
-  const casos = condenados.getCasosByDefensor(defensor);
+  const casos = consolidado.getCasosByDefensor(defensor);
   return res.json({ casos });
 });
 

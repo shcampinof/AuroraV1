@@ -79,27 +79,55 @@ body{
 
 .sidebar-button{
   display: block;
+  position: relative;
   width: 100%;
-  padding: 1.05rem 1rem;
+  padding: 1rem 1rem 1rem 1.1rem;
   margin-bottom: 1.05rem;
-  border: none;
-  background-color: var(--primary);
+  border: 1px solid #2f5f98;
+  background-color: #3c6eac;
   color: white;
-  font-size: 1.05rem;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.2px;
   border-radius: 4px;
   cursor: pointer;
-  text-align: center;
-  transition: background-color 0.2s, transform 0.05s;
+  text-align: left;
+  transition: background-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
 }
 
 .sidebar-button:hover{
-  background-color: var(--primary-dark);
-  transform: translateY(-1px);
+  background-color: #1d4f8b;
+  box-shadow: 0 6px 14px rgba(11, 92, 158, 0.26);
+  transform: translateY(-2px);
+}
+
+.sidebar-button:active{
+  background-color: #123f73;
+  box-shadow: inset 0 3px 7px rgba(0,0,0,0.25);
+  transform: translateY(0);
+}
+
+.sidebar-button:focus-visible{
+  outline: 3px solid #8bc5f1;
+  outline-offset: 2px;
 }
 
 .sidebar-button.active{
-  outline: 3px solid #cde6f6;
-  box-shadow: 0 0 0 2px #2a77b3 inset;
+  background-color: #0f457f;
+  border-color: #0a3563;
+  font-weight: 800;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.12) inset;
+}
+
+.sidebar-button.active::before{
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 4px;
+  border-radius: 0 3px 3px 0;
+  background: #9fd3f8;
 }
 
 .content-area{
@@ -207,6 +235,48 @@ body{
   color: #555;
 }
 
+.accion-pill{
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.accion-pill--azul{
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.accion-pill--gris{
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.accion-pill--neutro{
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.semaforo-dot{
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  display: inline-block;
+  box-shadow: 0 0 0 3px rgba(0,0,0,0.04) inset;
+}
+
+.semaforo-dot--verde{ background: #16a34a; }
+.semaforo-dot--amarillo{ background: #f59e0b; }
+.semaforo-dot--rojo{ background: #dc2626; }
+
 /* Buscador (Formulario Entrevista) */
 .search-row{
   display: flex;
@@ -238,6 +308,15 @@ body{
   background-color: #2a4f90;
 }
 
+.primary-button:active{
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.24);
+}
+
+.primary-button:focus-visible{
+  outline: 3px solid #8bc5f1;
+  outline-offset: 2px;
+}
+
 .primary-button.full{
   width: 100%;
   margin-top: 0.5rem;
@@ -251,6 +330,35 @@ body{
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.aurora-tab{
+  background-color: #eef3fb;
+  color: #345ea8;
+  border: 2px solid #345ea8;
+  font-weight: 700;
+  transition: background-color 200ms ease, color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
+}
+
+.aurora-tab:hover{
+  background-color: #dbe8fb;
+  color: #1f4686;
+  box-shadow: 0 6px 12px rgba(52, 94, 168, 0.22);
+  transform: translateY(-1px);
+}
+
+.aurora-tab:active{
+  background-color: #cadcf8;
+  box-shadow: inset 0 3px 8px rgba(16, 38, 77, 0.3);
+  transform: translateY(0);
+}
+
+.aurora-tab.active{
+  background-color: #345ea8;
+  color: #fff;
+  border-color: #203f75;
+  font-weight: 800;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.15) inset;
 }
 
 /* Acciones centradas */
@@ -342,6 +450,44 @@ body{
 }
 
 /* =========================================================
+   AURORA TABLE (solo RegistrosAsignados)
+========================================================= */
+.aurora-table{
+  table-layout: fixed;
+  min-width: 1420px;
+  font-size: 0.82rem;
+}
+
+.aurora-table th,
+.aurora-table td{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0.45rem 0.5rem;
+}
+
+.aurora-table td{
+  white-space: nowrap;
+  line-height: 1.2;
+  font-size: 0.82rem;
+}
+
+.aurora-table th{
+  line-height: 1.12;
+  font-size: 0.78rem;
+  white-space: normal;
+  vertical-align: middle;
+}
+
+.aurora-table .aurora-th-label{
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  line-clamp: 2;
+  max-height: calc(1.12em * 2);
+}
+
+/* =========================================================
    BADGES (estado entrevista)
 ========================================================= */
 .badge{
@@ -379,6 +525,47 @@ body{
   background: #e7fbff;
   border-color: #a8e7f2;
   color: #0a6476;
+}
+
+.estadoBadge{
+  display: inline-block;
+  padding: 0.2rem 0.58rem;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.estado--verde{
+  background: #e8f7ec;
+  border-color: #9fd9ae;
+  color: #115b26;
+}
+
+.estado--amarillo{
+  background: #fff4d6;
+  border-color: #ffd27a;
+  color: #6d4b00;
+}
+
+.estado--rojo{
+  background: #fde7e9;
+  border-color: #f6a2ac;
+  color: #8e1528;
+}
+
+.estado--azul{
+  background: #e7f0ff;
+  border-color: #b7d1ff;
+  color: #1f4ea8;
+}
+
+.estado--gris{
+  background: #f1f3f5;
+  border-color: #d0d6dc;
+  color: #4b5563;
 }
 
 .filter-panel{
@@ -437,6 +624,19 @@ body{
   max-width: min(520px, calc(100vw - 40px));
 }
 
+.toast-wrap--center{
+  left: 50%;
+  top: 45%;
+  right: auto;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+
+@keyframes toast-pop{
+  from { transform: translateY(10px) scale(0.98); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
 .toast{
   display:flex;
   align-items: flex-start;
@@ -446,6 +646,24 @@ body{
   border: 1px solid #e2e5ea;
   border-radius: 12px;
   box-shadow: 0 10px 24px rgba(0,0,0,0.12);
+  animation: toast-pop 160ms ease-out;
+}
+
+.toast--emphasis{
+  border: 2px solid #345ea8;
+  box-shadow: 0 18px 40px rgba(0,0,0,0.18);
+  padding: 1.05rem 1.15rem;
+}
+
+.toast--emphasis .toast-title{
+  font-size: 1.05rem;
+}
+
+.toast--emphasis .toast-icon{
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  font-size: 1.1rem;
 }
 
 .toast-icon{

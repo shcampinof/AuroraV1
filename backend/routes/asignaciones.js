@@ -1,5 +1,5 @@
-﻿const express = require('express');
-const condenados = require('../db/condenados.repo');
+const express = require('express');
+const consolidado = require('../db/consolidado.repo');
 
 const router = express.Router();
 
@@ -11,8 +11,9 @@ router.post('/', (req, res) => {
   if (!defensor) return res.status(400).json({ message: 'Defensor requerido' });
   if (!documentos.length) return res.status(400).json({ message: 'Documentos requeridos' });
 
-  const updated = condenados.assignDefensor(documentos, defensor);
+  const updated = consolidado.assignDefensor(documentos, defensor);
   return res.json({ updated });
 });
 
 module.exports = router;
+

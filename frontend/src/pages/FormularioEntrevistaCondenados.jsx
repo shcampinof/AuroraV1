@@ -139,6 +139,12 @@ const OPCIONES_ACTUACION_A_ADELANTAR = [
   'Ninguna porque porque ya no está en prisión',
 ];
 
+const ACTUACIONES_UTILIDAD_PUBLICA = new Set([
+  'Utilidad pública (solo para mujeres)',
+  'Utilidad pública y prisión domiciliaria',
+  'Utilidad pública y libertad condicional',
+]);
+
 const OPCIONES_PODER = ['Sí se requiere', 'Ya se cuenta con poder'];
 
 const OPCIONES_SENTIDO_DECISION = ['Concede solicitud', 'No concede solicitud'];
@@ -358,6 +364,10 @@ function FormularioEntrevista({
   const actuacionAdelantar = String(registro?.actuacionJudicialAdelantar ?? '-');
   const sentidoDecision = String(registro?.['Sentido de la decisión'] ?? '-');
   const otrasSolicitudes = String(registro?.['Otras solicitudes a tramitar'] ?? '-');
+  const procedenciaAcumulacionPenas = String(registro?.['Procedencia de acumulación de penas'] ?? '-');
+
+  const esActuacionUtilidadPublica = ACTUACIONES_UTILIDAD_PUBLICA.has(actuacionAdelantar);
+  const habilitarPregunta35 = procedenciaAcumulacionPenas.trim() === 'Sí';
 
   const decisionUsuarioDesbloquea = [
     'Desea que el defensor(a) público(a) avance con la solicitud',
@@ -380,11 +390,21 @@ function FormularioEntrevista({
     habilitarBloquesPosteriores &&
     Boolean(actuacionAdelantar && actuacionAdelantar !== '-' && !actuacionBloquea);
 
-  const habilitarUtilidadPublica =
-    habilitarBloque5 && actuacionAdelantar.toLowerCase().includes('utilidad pública');
+  const habilitarUtilidadPublica = habilitarBloque5 && esActuacionUtilidadPublica;
 
   const habilitarNegativa = habilitarBloque5 && sentidoDecision === 'No concede solicitud';
   // Regla: 57- Sentido de la decisión desbloquea 3 preguntas siguientes (58-60) si es "No concede solicitud".
+
+  useEffect(() => {
+    // Regla de activación: P35 solo aplica si P34 = "Sí". Si no, queda deshabilitada y vacía.
+    if (habilitarPregunta35) return;
+    setRegistro((prev) => {
+      if (!prev) return prev;
+      const current = String(prev['Con qué proceso(s) debe acumular penas (si aplica)'] ?? '');
+      if (current === '') return prev;
+      return { ...prev, 'Con qué proceso(s) debe acumular penas (si aplica)': '' };
+    });
+  }, [habilitarPregunta35]);
 
   const motivoDecisionNegativaUnificado =
     registro?.motivoDecisionNegativaUnificado ||
@@ -431,6 +451,9 @@ function FormularioEntrevista({
       <Toast
         open={toastOpen}
         message="Aurora — Cambios guardados correctamente"
+        durationMs={3000}
+        placement="center"
+        emphasis
         onClose={() => setToastOpen(false)}
       />
 
@@ -742,6 +765,7 @@ function FormularioEntrevista({
               name="Con qué proceso(s) debe acumular penas (si aplica)"
               value={registro['Con qué proceso(s) debe acumular penas (si aplica)']}
               onChange={handleChange}
+              disabled={!habilitarPregunta35}
             />
 
             <Campo
@@ -821,9 +845,10 @@ function FormularioEntrevista({
             )}
           </div>
 
-          <h3 className="block-title">BLOQUE 5. Trámite (post-entrevista)</h3>
-
-          <div className="grid-2">
+          {esActuacionUtilidadPublica ? (
+            <>
+              <h3 className="block-title">BLOQUE 5A. Utilidad pública</h3>
+              <div className="grid-2">
             <Campo
               label="43. Cumple el requisito de marginalidad"
               name="cumpleMarginalidad"
@@ -916,8 +941,13 @@ function FormularioEntrevista({
               onChange={handleChange}
               disabled={!habilitarUtilidadPublica}
             />
-
-            <Campo
+              </div>
+            </>
+          ) : (
+            <>
+              <h3 className="block-title">BLOQUE 5B. Trámite de la solicitud</h3>
+              <div className="grid-2">
+                <Campo
               label="53. Fecha de recepción de pruebas aportadas por el usuario (si aplica)"
               name="Fecha de recepción de pruebas aportadas por el usuario"
               type="date"
@@ -982,16 +1012,18 @@ function FormularioEntrevista({
               disabled={!habilitarNegativa}
             />
 
-            <Campo
-              label="60. Sentido de la decisión que resuelve recurso"
-              name="Sentido de la decisión que resuelve recurso"
-              type="select"
-              value={registro['Sentido de la decisión que resuelve recurso'] ?? '-'}
-              onChange={handleChange}
-              options={['-', ...OPCIONES_SENTIDO_DECISION_RECURSO]}
-              disabled={!habilitarNegativa}
-            />
-          </div>
+                <Campo
+                  label="60. Sentido de la decisión que resuelve recurso"
+                  name="Sentido de la decisión que resuelve recurso"
+                  type="select"
+                  value={registro['Sentido de la decisión que resuelve recurso'] ?? '-'}
+                  onChange={handleChange}
+                  options={['-', ...OPCIONES_SENTIDO_DECISION_RECURSO]}
+                  disabled={!habilitarNegativa}
+                />
+              </div>
+            </>
+          )}
 
           <h3 className="block-title">BLOQUE ADICIONAL. Solicitudes distintas (CSV)</h3>
 

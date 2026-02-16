@@ -14,6 +14,7 @@ function Sidebar({ vistaActual, onChangeView }) {
         <button
           key={it.id}
           className={`sidebar-button ${vistaActual === it.id ? 'active' : ''}`}
+          aria-current={vistaActual === it.id ? 'page' : undefined}
           onClick={() => onChangeView(it.id)}
         >
           {it.label}
