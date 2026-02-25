@@ -1,4 +1,4 @@
-function Home() {
+﻿function Home() {
   return (
     <div className="card">
       <div className="home-logo-placeholder">
@@ -16,6 +16,10 @@ function Home() {
         libertad.
       </p>
       <p className="home-text">Use el menú lateral para navegar dentro del sitio.</p>
+      <p className="home-text home-note">
+        Si presenta algún error o inconveniente en la plataforma, repórtelo al correo{' '}
+        <span className="home-note-email">aurora@defensoria.edu.co</span>.
+      </p>
     </div>
   );
 }

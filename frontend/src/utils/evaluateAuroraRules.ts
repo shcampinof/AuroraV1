@@ -19,7 +19,7 @@ export interface EvaluateAuroraRulesResult {
   derivedStatus: DerivedStatus;
 }
 
-const PLACEHOLDER_VALUES = new Set(['-', '--', 'n/a', 'na', 'null', 'undefined', 'seleccione', 'todos']);
+const PLACEHOLDER_VALUES = new Set(['-', '--', 'null', 'undefined', 'seleccione', 'todos']);
 
 function toText(value: unknown): string {
   if (value === null || value === undefined) return '';
@@ -31,6 +31,63 @@ function normalizeText(value: unknown): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
+}
+
+function normalizeKeyLoose(value: unknown): string {
+  return normalizeText(value)
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function latin1ToUtf8(value: string): string {
+  try {
+    return decodeURIComponent(escape(value));
+  } catch {
+    return value;
+  }
+}
+
+function utf8ToLatin1(value: string): string {
+  try {
+    return unescape(encodeURIComponent(value));
+  } catch {
+    return value;
+  }
+}
+
+function keyVariants(value: unknown): string[] {
+  const raw = toText(value);
+  if (!raw) return [''];
+  const variants = new Set<string>([raw]);
+  // Two conversion rounds cover common mojibake chains (utf8<->latin1 applied more than once).
+  for (let i = 0; i < 2; i += 1) {
+    const snapshot = Array.from(variants);
+    for (const v of snapshot) {
+      variants.add(latin1ToUtf8(v));
+      variants.add(utf8ToLatin1(v));
+    }
+  }
+  return Array.from(new Set(Array.from(variants).map((v) => normalizeKeyLoose(v))));
+}
+
+function readAnswer(answers: FormRecord, key: string): unknown {
+  if (!answers) return undefined;
+  if (Object.prototype.hasOwnProperty.call(answers, key)) return answers[key];
+  const lookupVariants = keyVariants(key);
+  const matched = Object.keys(answers).find((k) => {
+    const candidateVariants = keyVariants(k);
+    return candidateVariants.some((cv) => lookupVariants.includes(cv));
+  });
+  if (!matched) return undefined;
+  return answers[matched];
+}
+
+function readFieldValue(answers: FormRecord, field: { key: string; id?: string }): unknown {
+  if (field.id) {
+    const byId = readAnswer(answers, field.id);
+    if (byId !== undefined && byId !== null && String(byId).trim() !== '') return byId;
+  }
+  return readAnswer(answers, field.key);
 }
 
 export function normalizeYesNo(value: unknown): 'si' | 'no' | '' {
@@ -69,7 +126,8 @@ function getActiveBlock5Variant(answers: FormRecord): {
 
 function areMandatoryFieldsFilled(answers: FormRecord, blockId: string): boolean {
   const fields = auroraFormRules.mandatoryByBlock?.[blockId] || [];
-  return fields.every((field) => field.optional || isFilled(answers?.[field.key]));
+  const complete = fields.every((field) => field.optional || isFilled(readFieldValue(answers, field)));
+  return complete;
 }
 
 function evaluateVisibleBlocks(answers: FormRecord, locked: boolean, activeBlock5: AuroraBlockId): AuroraBlockId[] {

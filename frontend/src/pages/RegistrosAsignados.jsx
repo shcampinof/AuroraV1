@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getDefensores, getPplListado } from '../services/api.js';
 import { pickActiveCaseData } from '../utils/entrevistaEstado.js';
 import { displayOrDash } from '../utils/pplDisplay.js';
@@ -14,21 +14,29 @@ function prettifyHeader(key) {
 }
 
 const EXTRA_COLUMNS = ['posibleActuacionJudicial'];
+const ROWS_PER_PAGE = 200;
+const ESTADOS_TRAMITE_OPTIONS = [
+  'Analizar el caso',
+  'Entrevistar al usuario',
+  'Presentar solicitud',
+  'Pendiente decisión',
+  'Caso cerrado',
+];
 
 const HEADER_LABELS = {
-  Title: 'Número de identificación',
-  TITLE: 'Número de identificación',
-  title: 'Número de identificación',
-  numeroIdentificacion: 'Número de identificación',
-  establecimientoReclusion: 'Lugar de reclusión',
-  departamentoEron: 'Departamento del lugar de reclusión',
-  municipioEron: 'Municipio del lugar de reclusión',
-  numeroProceso: 'Número de proceso',
-  numeroProcesoJudicial: 'Número de proceso',
-  proceso: 'Número de proceso',
-  Proceso: 'Número de proceso',
-  PROCESO: 'Número de proceso',
-  posibleActuacionJudicial: 'Posible actuación judicial a adelantar',
+  Title: 'N\u00famero de identificaci\u00f3n',
+  TITLE: 'N\u00famero de identificaci\u00f3n',
+  title: 'N\u00famero de identificaci\u00f3n',
+  numeroIdentificacion: 'N\u00famero de identificaci\u00f3n',
+  establecimientoReclusion: 'Lugar de reclusi\u00f3n',
+  departamentoEron: 'Departamento del lugar de reclusi\u00f3n',
+  municipioEron: 'Municipio del lugar de reclusi\u00f3n',
+  numeroProceso: 'N\u00famero de proceso',
+  numeroProcesoJudicial: 'N\u00famero de proceso',
+  proceso: 'N\u00famero de proceso',
+  Proceso: 'N\u00famero de proceso',
+  PROCESO: 'N\u00famero de proceso',
+  posibleActuacionJudicial: 'Posible actuaci\u00f3n judicial a adelantar',
 };
 
 function getHeaderLabel(key) {
@@ -48,7 +56,7 @@ function getCellValue(row, key) {
 function findDocumentoKey(columns) {
   if (!Array.isArray(columns)) return null;
   const candidates = [
-    'Número de identificación',
+    'N\u00famero de identificaci\u00f3n',
     'Numero de identificacion',
     'numeroIdentificacion',
     'documento',
@@ -71,9 +79,18 @@ function normalize(value) {
   return String(value ?? '').trim().toLowerCase();
 }
 
+function firstFilledValue(...values) {
+  for (const value of values) {
+    const text = String(value ?? '').trim();
+    if (text && text !== '-' && text !== '\u2014') return text;
+  }
+  return '';
+}
+
 function normalizeEstado(value) {
   return String(value ?? '')
     .trim()
+    .replace(/\s+/g, ' ')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
@@ -86,7 +103,69 @@ function getEstadoClass(estado) {
   if (key === 'presentar solicitud') return 'estado--rojo';
   if (key === 'pendiente decision') return 'estado--azul';
   if (key === 'caso cerrado') return 'estado--gris';
+  if (key === 'cerrado') return 'estado--gris';
+  if (key === 'activo') return 'estado--azul';
   return '';
+}
+
+function parseDateValue(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+
+  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]);
+    const day = Number(isoMatch[3]);
+    const parsed = new Date(year, month - 1, day);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+
+  const dmyMatch = text.match(/^(\d{2})[/-](\d{2})[/-](\d{4})$/);
+  if (dmyMatch) {
+    const day = Number(dmyMatch[1]);
+    const month = Number(dmyMatch[2]);
+    const year = Number(dmyMatch[3]);
+    const parsed = new Date(year, month - 1, day);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function getDaysSince(value) {
+  const date = parseDateValue(value);
+  if (!date) return null;
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const diff = Math.floor((today - start) / (1000 * 60 * 60 * 24));
+  return diff < 0 ? 0 : diff;
+}
+
+function getSemaforoClassByDays(days) {
+  if (!Number.isFinite(days)) return '';
+  if (days <= 15) return 'estado--verde';
+  if (days <= 30) return 'estado--amarillo';
+  return 'estado--rojo';
+}
+
+function pickFirstValue(source, keys) {
+  if (!source || typeof source !== 'object') return '';
+  return firstFilledValue(...(keys || []).map((k) => source?.[k]));
+}
+
+function canonicalEstadoLabel(value) {
+  const key = normalizeEstado(value);
+  if (key === 'analizar el caso') return 'Analizar el caso';
+  if (key === 'entrevistar al usuario') return 'Entrevistar al usuario';
+  if (key === 'presentar solicitud') return 'Presentar solicitud';
+  if (key === 'pendiente decision') return 'Pendiente decisión';
+  if (key === 'caso cerrado') return 'Caso cerrado';
+  return String(value ?? '').trim();
 }
 
 function distinctSorted(rows, getter) {
@@ -186,20 +265,21 @@ function InputField({
 
 function getColumnWidth(col) {
   const widths = {
-    __situacionJuridica__: 110,
-    __numeroIdentificacion__: 160,
-    __nombreUsuario__: 180,
-    __defensor__: 140,
-    __lugarPrivacion__: 180,
-    __estadoTramite__: 120,
-    __departamentoReclusion__: 185,
-    __municipioReclusion__: 185,
+    __situacionJuridica__: 115,
+    __numeroIdentificacion__: 140,
+    __nombreUsuario__: 160,
+    __defensor__: 130,
+    __lugarPrivacion__: 170,
+    __estadoTramite__: 105,
+    __departamentoReclusion__: 155,
+    __municipioReclusion__: 140,
   };
-  return widths[col] || 170;
+  return widths[col] || 150;
 }
 
 export default function RegistrosAsignados({ onSelectRegistro }) {
   const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState('');
 
   const [columns, setColumns] = useState([]);
   const [rows, setRows] = useState([]);
@@ -224,13 +304,16 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     estado: '',
   });
   const [filtroAdicionalSeleccionado, setFiltroAdicionalSeleccionado] = useState('');
+  const [pagina, setPagina] = useState(1);
 
   const [defensores, setDefensores] = useState([]);
+  const isDev = typeof import.meta !== 'undefined' && import.meta?.env?.DEV;
+  const estadoInfoCacheRef = useRef(new WeakMap());
 
   function getNumeroIdentificacionValue(obj) {
     const data = pickActiveCaseData(obj);
     return (
-      data?.['Número de identificación'] ??
+      data?.['N\u00famero de identificaci\u00f3n'] ??
       data?.['Numero de identificacion'] ??
       data?.numeroIdentificacion ??
       data?.Title ??
@@ -247,8 +330,10 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   function getSituacionJuridicaValue(obj) {
     const data = pickActiveCaseData(obj);
     return (
-      data?.['Situación jurídica actualizada (de conformidad con la rama judicial)'] ??
-      data?.['Situación jurídica'] ??
+      data?.['Situaci\u00f3n jur\u00eddica actualizada (de conformidad con la rama judicial)'] ??
+      data?.['Situacion juridica actualizada (de conformidad con la rama judicial)'] ??
+      data?.['Situaci\u00f3n jur\u00eddica'] ??
+      data?.['Situacion juridica'] ??
       data?.situacionJuridicaActualizada ??
       data?.situacionJuridica ??
       ''
@@ -258,7 +343,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   function getDefensorValue(obj) {
     const data = pickActiveCaseData(obj);
     return (
-      data?.['Defensor(a) Público(a) Asignado para tramitar la solicitud'] ??
+      data?.['Defensor(a) P\u00fablico(a) Asignado para tramitar la solicitud'] ??
       data?.['Defensor(a) Publico(a) Asignado para tramitar la solicitud'] ??
       data?.defensorAsignado ??
       data?.defensor ??
@@ -269,7 +354,8 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   function getLugarPrivacionValue(obj) {
     const data = pickActiveCaseData(obj);
     return (
-      data?.['Nombre del lugar de privación de la libertad'] ??
+      data?.['Nombre del lugar de privaci\u00f3n de la libertad'] ??
+      data?.['Nombre del lugar de privacion de la libertad'] ??
       data?.establecimientoReclusion ??
       data?.Establecimiento ??
       data?.lugarReclusion ??
@@ -280,7 +366,8 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   function getDepartamentoPrivacionValue(obj) {
     const data = pickActiveCaseData(obj);
     return (
-      data?.['Departamento del lugar de privación de la libertad'] ??
+      data?.['Departamento del lugar de privaci\u00f3n de la libertad'] ??
+      data?.['Departamento del lugar de privacion de la libertad'] ??
       data?.departamentoLugarReclusion ??
       data?.departamentoEron ??
       data?.departamento ??
@@ -291,7 +378,8 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   function getMunicipioPrivacionValue(obj) {
     const data = pickActiveCaseData(obj);
     return (
-      data?.['Distrito/municipio del lugar de privación de la libertad'] ??
+      data?.['Distrito/municipio del lugar de privaci\u00f3n de la libertad'] ??
+      data?.['Distrito/municipio del lugar de privacion de la libertad'] ??
       data?.municipioLugarReclusion ??
       data?.municipioEron ??
       data?.municipio ??
@@ -301,9 +389,79 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
   function getEstadoTramiteValue(obj) {
     const data = pickActiveCaseData(obj);
-    const derived = evaluateAuroraRules({ answers: data || {} })?.derivedStatus;
-    if (derived) return derived;
-    return data?.['Estado del caso'] ?? data?.['Estado del trámite'] ?? data?.estado ?? data?.estadoEntrevista ?? data?.['Estado entrevista'] ?? '';
+    return firstFilledValue(
+      data?.['Acci\u00f3n a realizar'] ??
+      data?.['Accion a realizar'] ??
+      data?.['Actuaci\u00f3n a adelantar'] ??
+      data?.['Actuacion a adelantar'] ??
+      data?.posibleActuacionJudicial ??
+      data?.['Estado del caso'] ??
+      data?.['Estado del tr\u00e1mite'] ??
+      data?.['Estado del tramite'] ??
+      data?.estado ??
+      data?.estadoEntrevista ??
+      data?.['Estado entrevista']
+    );
+  }
+
+  function getEstadoDisplayInfo(obj) {
+    const data = pickActiveCaseData(obj);
+    const derivedStatus = canonicalEstadoLabel(evaluateAuroraRules({ answers: data || {} }).derivedStatus);
+    const derivedKey = normalizeEstado(derivedStatus);
+
+    if (derivedKey === 'caso cerrado') {
+      return { label: 'Caso cerrado', className: 'estado--gris' };
+    }
+    if (derivedKey === 'pendiente decision') {
+      return { label: 'Pendiente decisión', className: 'estado--azul' };
+    }
+    if (derivedKey === 'analizar el caso') {
+      const fechaAsignacionPag = firstFilledValue(
+        pickFirstValue(data, [
+          'Fecha de asignación del PAG',
+          'Fecha asignación del PAG',
+          'Fecha de asignación PAG',
+          'Fecha asignación PAG',
+          'Fecha de asignación',
+          'Fecha de asignacion',
+          'fechaAsignacionPAG',
+          'fechaAsignacionPag',
+          'fechaAsignacion',
+        ]),
+        obj?.createdAt
+      );
+      const className = getSemaforoClassByDays(getDaysSince(fechaAsignacionPag));
+      return { label: 'Analizar el caso', className: className || 'estado--verde' };
+    }
+    if (derivedKey === 'entrevistar al usuario') {
+      const fechaAnalisis = pickFirstValue(data, [
+        'Fecha de análisis jurídico del caso',
+        'Fecha de analisis juridico del caso',
+        'aurora_b3_fechaAnalisis',
+      ]);
+      const className = getSemaforoClassByDays(getDaysSince(fechaAnalisis));
+      return { label: 'Entrevistar al usuario', className: className || 'estado--amarillo' };
+    }
+    if (derivedKey === 'presentar solicitud') {
+      const fechaEntrevista = pickFirstValue(data, ['Fecha de entrevista']);
+      const className = getSemaforoClassByDays(getDaysSince(fechaEntrevista));
+      return { label: 'Presentar solicitud', className: className || 'estado--rojo' };
+    }
+
+    const fallbackLabel = firstFilledValue(getEstadoTramiteValue(obj), derivedStatus);
+    return {
+      label: fallbackLabel,
+      className: getEstadoClass(fallbackLabel),
+    };
+  }
+
+  function getEstadoDisplayInfoMemo(obj) {
+    if (!obj || typeof obj !== 'object') return getEstadoDisplayInfo(obj);
+    const cached = estadoInfoCacheRef.current.get(obj);
+    if (cached) return cached;
+    const computed = getEstadoDisplayInfo(obj);
+    estadoInfoCacheRef.current.set(obj, computed);
+    return computed;
   }
 
   function setFiltroDraft(key, value) {
@@ -365,12 +523,18 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
     async function cargar() {
       setCargando(true);
+      setErrorCarga('');
       try {
         const data = await getPplListado();
         if (!alive) return;
 
         const cols = Array.isArray(data?.columns) ? data.columns : [];
         const rws = Array.isArray(data?.rows) ? data.rows : [];
+
+        if (isDev) {
+          console.log('[Usuarios asignados] getPplListado -> columns:', cols);
+          console.log('[Usuarios asignados] getPplListado -> rows.length:', rws.length);
+        }
 
         const inferred =
           cols.length > 0
@@ -392,6 +556,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       } catch (e) {
         console.error(e);
         if (alive) {
+          setErrorCarga('No fue posible cargar los usuarios asignados.');
           setColumns([]);
           setRows([]);
         }
@@ -404,7 +569,11 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [isDev]);
+
+  useEffect(() => {
+    estadoInfoCacheRef.current = new WeakMap();
+  }, [rows]);
 
   useEffect(() => {
     setDefensores((prev) => {
@@ -432,14 +601,11 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
   const documentoKey = useMemo(() => findDocumentoKey(columns), [columns]);
 
-  const nombresDisponibles = useMemo(() => distinctSorted(rows, getNombreUsuarioValue), [rows]);
-  const documentosDisponibles = useMemo(() => distinctSorted(rows, getNumeroIdentificacionValue), [rows]);
   const lugaresDisponibles = useMemo(() => distinctSorted(rows, getLugarPrivacionValue), [rows]);
   const departamentosDisponibles = useMemo(() => distinctSorted(rows, getDepartamentoPrivacionValue), [rows]);
 
-  const estadosDisponibles = useMemo(() => {
-    return distinctSorted(rows, getEstadoTramiteValue);
-  }, [rows]);
+  const estadosDisponibles = useMemo(() => ESTADOS_TRAMITE_OPTIONS, []);
+
 
   const municipiosDisponiblesDraft = useMemo(() => {
     const depNeedle = normalize(filtrosDraft.departamento);
@@ -458,6 +624,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   }, [filtrosDraft.municipio, municipiosDisponiblesDraft]);
 
   const rowsFiltradas = useMemo(() => {
+    const estadoFiltro = normalize(filtrosAplicados.estado);
     return rows.filter((r) => {
       const obj = r || {};
 
@@ -494,13 +661,37 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
         return false;
       }
 
-      if (filtrosAplicados.estado && normalize(getEstadoTramiteValue(obj)) !== normalize(filtrosAplicados.estado)) {
+      if (estadoFiltro && normalize(getEstadoDisplayInfoMemo(obj).label) !== estadoFiltro) {
         return false;
       }
 
       return true;
     });
   }, [rows, filtrosAplicados]);
+
+  const totalPaginas = useMemo(() => Math.max(1, Math.ceil(rowsFiltradas.length / ROWS_PER_PAGE)), [rowsFiltradas.length]);
+  const paginaActual = Math.min(pagina, totalPaginas);
+
+  const rowsPaginaActual = useMemo(() => {
+    const inicio = (paginaActual - 1) * ROWS_PER_PAGE;
+    return rowsFiltradas.slice(inicio, inicio + ROWS_PER_PAGE);
+  }, [rowsFiltradas, paginaActual]);
+
+  useEffect(() => {
+    if (!isDev) return;
+    console.log('[Usuarios asignados] rowsFiltradas.length:', rowsFiltradas.length);
+    console.log('[Usuarios asignados] rowsPaginaActual.length:', rowsPaginaActual.length);
+  }, [isDev, rowsFiltradas.length, rowsPaginaActual.length]);
+
+  useEffect(() => {
+    setPagina(1);
+  }, [filtrosAplicados, rows]);
+
+  useEffect(() => {
+    if (pagina > totalPaginas) {
+      setPagina(totalPaginas);
+    }
+  }, [pagina, totalPaginas]);
 
   function aplicarFiltros() {
     const next = {
@@ -558,14 +749,21 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     ];
 
     const remove = new Set([
-      'Situación jurídica',
-      'Situación jurídica actualizada (de conformidad con la rama judicial)',
-      'Número de identificación',
+      'Situaci\u00f3n jur\u00eddica',
+      'Situacion juridica',
+      'Situaci\u00f3n jur\u00eddica actualizada (de conformidad con la rama judicial)',
+      'Situacion juridica actualizada (de conformidad con la rama judicial)',
+      'N\u00famero de identificaci\u00f3n',
+      'Numero de identificacion',
       'Nombre',
-      'Defensor(a) Público(a) Asignado para tramitar la solicitud',
-      'Nombre del lugar de privación de la libertad',
-      'Departamento del lugar de privación de la libertad',
-      'Distrito/municipio del lugar de privación de la libertad',
+      'Defensor(a) P\u00fablico(a) Asignado para tramitar la solicitud',
+      'Defensor(a) Publico(a) Asignado para tramitar la solicitud',
+      'Nombre del lugar de privaci\u00f3n de la libertad',
+      'Nombre del lugar de privacion de la libertad',
+      'Departamento del lugar de privaci\u00f3n de la libertad',
+      'Departamento del lugar de privacion de la libertad',
+      'Distrito/municipio del lugar de privaci\u00f3n de la libertad',
+      'Distrito/municipio del lugar de privacion de la libertad',
       'Estado del caso',
       'numeroIdentificacion',
       'Title',
@@ -575,17 +773,17 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       'nombre',
       'nombreUsuario',
       'NombreUsuario',
-      'Situación jurídica ',
-      'Situación jurídica ',
+      'Situaci\u00f3n jur\u00eddica ',
+      'Situacion juridica ',
       'situacionJuridica',
       'situacionJuridicaActualizada',
-      'Departamento del lugar de reclusión',
-      'Departamento del lugar de reclusión',
+      'Departamento del lugar de reclusi\u00f3n',
+      'Departamento del lugar de reclusion',
       'departamentoLugarReclusion',
       'departamentoEron',
       'departamento',
-      'Municipio del lugar de reclusión',
-      'Municipio del lugar de reclusión',
+      'Municipio del lugar de reclusi\u00f3n',
+      'Municipio del lugar de reclusion',
       'municipioLugarReclusion',
       'municipioEron',
       'municipio',
@@ -601,11 +799,11 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
   }, [columns]);
 
   function renderHeader(col) {
-    if (col === '__situacionJuridica__') return 'SITUACIÓN JURÍDICA';
-    if (col === '__numeroIdentificacion__') return 'NÚMERO DE IDENTIFICACIÓN';
+    if (col === '__situacionJuridica__') return 'SITUACI\u00d3N JUR\u00cdDICA';
+    if (col === '__numeroIdentificacion__') return 'N\u00daMERO DE IDENTIFICACI\u00d3N';
     if (col === '__nombreUsuario__') return 'NOMBRE USUARIO';
     if (col === '__defensor__') return 'DEFENSOR';
-    if (col === '__lugarPrivacion__') return 'Nombre del lugar de privación de la libertad';
+    if (col === '__lugarPrivacion__') return 'Nombre del lugar de privaci\u00f3n de la libertad';
     if (col === '__estadoTramite__') return 'ESTADO';
     if (col === '__departamentoReclusion__') return 'DEPARTAMENTO';
     if (col === '__municipioReclusion__') return 'MUNICIPIO';
@@ -619,9 +817,10 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     if (col === '__defensor__') return displayOrDash(getDefensorValue(row));
     if (col === '__lugarPrivacion__') return displayOrDash(getLugarPrivacionValue(row));
     if (col === '__estadoTramite__') {
-      const estado = String(getEstadoTramiteValue(row) || '').trim();
-      if (!estado) return '—';
-      const estadoClass = getEstadoClass(estado);
+      const estadoInfo = getEstadoDisplayInfoMemo(row);
+      const estado = String(estadoInfo.label || '').trim();
+      if (!estado) return '\u2014';
+      const estadoClass = String(estadoInfo.className || getEstadoClass(estado)).trim();
       if (!estadoClass) return estado;
       return <span className={`estadoBadge ${estadoClass}`}>{estado}</span>;
     }
@@ -636,7 +835,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     if (col === '__nombreUsuario__') return String(displayOrDash(getNombreUsuarioValue(row)));
     if (col === '__defensor__') return String(displayOrDash(getDefensorValue(row)));
     if (col === '__lugarPrivacion__') return String(displayOrDash(getLugarPrivacionValue(row)));
-    if (col === '__estadoTramite__') return String(displayOrDash(getEstadoTramiteValue(row)));
+    if (col === '__estadoTramite__') return String(displayOrDash(getEstadoDisplayInfoMemo(row).label));
     if (col === '__departamentoReclusion__') return String(displayOrDash(getDepartamentoPrivacionValue(row)));
     if (col === '__municipioReclusion__') return String(displayOrDash(getMunicipioPrivacionValue(row)));
     return String(displayOrDash(getCellValue(row, col)));
@@ -666,12 +865,13 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       </div>
 
       {cargando && <p>Cargando.</p>}
+      {!cargando && errorCarga && <p className="hint-text">{errorCarga}</p>}
 
       {!cargando && (
         <div className="asignados-layout">
           {mostrarFiltros && (
             <div className="filter-panel">
-              <h3 className="filter-title">Búsqueda</h3>
+              <h3 className="filter-title">{'B\u00fasqueda'}</h3>
 
               <DropdownField
                 label="Defensor"
@@ -683,13 +883,13 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
               />
 
               <InputField
-                label="Número de identificación"
+                label={'N\u00famero de identificaci\u00f3n'}
                 value={filtrosDraft.documento}
                 onChange={(value) => setFiltroDraft('documento', value)}
                 type="number"
                 inputMode="numeric"
                 pattern="[0-9]*"
-                placeholder="Ingrese cédula"
+                placeholder={'Ingrese c\u00e9dula'}
               />
 
               <DropdownField
@@ -773,9 +973,9 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
             </div>
           )}
 
-          <div className="asignados-table">
-            <div className="table-container tall">
-              <table className="data-table aurora-table">
+          <div className="asignados-table-shell">
+            <div className="table-container tall asignados-table-container">
+              <table className="data-table aurora-table asignados-table">
                 <colgroup>
                   {orderedColumns.map((c) => (
                     <col key={`col-${c}`} style={{ width: `${getColumnWidth(c)}px` }} />
@@ -792,12 +992,12 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                 </thead>
 
                 <tbody>
-                  {rowsFiltradas.map((r, idx) => {
+                  {rowsPaginaActual.map((r, idx) => {
                     const key =
                       (documentoKey && pickActiveCaseData(r)?.[documentoKey]) ||
                       getNumeroIdentificacionValue(r) ||
                       r?.id ||
-                      idx;
+                      `${paginaActual}-${idx}`;
 
                     return (
                       <tr
@@ -824,6 +1024,32 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                 </tbody>
               </table>
             </div>
+
+            {rowsFiltradas.length > 0 && (
+              <div className="search-row" style={{ marginTop: '0.75rem', justifyContent: 'space-between' }}>
+                <p className="hint-text" style={{ margin: 0 }}>
+                  Mostrando {rowsPaginaActual.length} de {rowsFiltradas.length} registros. Pagina {paginaActual} de {totalPaginas}.
+                </p>
+                <div className="search-row" style={{ gap: '0.5rem' }}>
+                  <button
+                    className="primary-button"
+                    type="button"
+                    onClick={() => setPagina((p) => Math.max(1, p - 1))}
+                    disabled={paginaActual <= 1}
+                  >
+                    Anterior
+                  </button>
+                  <button
+                    className="primary-button"
+                    type="button"
+                    onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
+                    disabled={paginaActual >= totalPaginas}
+                  >
+                    Siguiente
+                  </button>
+                </div>
+              </div>
+            )}
 
             <p className="hint-text">
               Haga clic sobre una fila para abrir el formulario de entrevista del usuario seleccionado.

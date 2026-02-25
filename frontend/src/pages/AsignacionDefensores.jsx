@@ -8,6 +8,7 @@ import {
 import Toast from '../components/Toast.jsx';
 import { getEstadoEntrevista } from '../utils/entrevistaEstado.js';
 import { displayOrDash } from '../utils/pplDisplay.js';
+import { reportError } from '../utils/reportError.js';
 
 function tieneDefensor(value) {
   const cleaned = String(value ?? '').trim();
@@ -55,7 +56,7 @@ function AsignacionDefensores() {
       const data = await getCondenados();
       setRows(Array.isArray(data?.rows) ? data.rows : []);
     } catch (e) {
-      console.error(e);
+      reportError(e, 'asignacion-defensores:cargar-ppl');
       setError('Error cargando PPL.');
       setRows([]);
     } finally {
@@ -84,7 +85,7 @@ function AsignacionDefensores() {
 
       setDefensores(Array.from(map.values()));
     } catch (e) {
-      console.error(e);
+      reportError(e, 'asignacion-defensores:cargar-defensores');
       setDefensores([]);
     }
   }
@@ -285,7 +286,7 @@ function AsignacionDefensores() {
       await cargarPpl();
       await cargarDefensoresActuales();
     } catch (e) {
-      console.error(e);
+      reportError(e, 'asignacion-defensores:guardar');
       setError('Error guardando la asignacion.');
     } finally {
       setCargando(false);
@@ -298,7 +299,7 @@ function AsignacionDefensores() {
 
       <Toast
         open={toastOpen}
-        message="Aurora — Cambios guardados correctamente"
+        message="Aurora - Cambios guardados correctamente"
         onClose={() => setToastOpen(false)}
       />
 
@@ -488,24 +489,11 @@ function AsignacionDefensores() {
         </div>
       </div>
 
-      <div className="asignados-layout" style={{ marginTop: '1rem' }}>
-        <div className="asignados-table">
-          <div className="table-container tall">
-            <table className="data-table">
+      <div className="pag-layout" style={{ marginTop: '1rem' }}>
+        <div className="pag-table-shell">
+          <div className="table-container tall tabla-asignacion-wrapper pag-table-container">
+            <table className="data-table tabla-asignacion pag-table">
               <thead>
-                <tr className="is-hidden">
-                  <th />
-                  <th>Número de identificación</th>
-                  <th>Nombre usuario</th>
-                  <th>Defensor actual</th>
-                  <th>Lugar de reclusión</th>
-                  <th>Departamento</th>
-                  <th>Municipio</th>
-                  <th>Autoridad a cargo</th>
-                  <th>Número de proceso</th>
-                  <th>Situación jurídica</th>
-                </tr>
-
                 <tr>
                   <th />
                   <th>Situación jurídica</th>
@@ -568,3 +556,4 @@ function AsignacionDefensores() {
 }
 
 export default AsignacionDefensores;
+

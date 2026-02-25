@@ -72,28 +72,45 @@ export async function getDefensoresCondenados() {
   return res.json(); // { defensores }
 }
 
-export async function createDefensor(nombre) {
-  const res = await fetch(`${API_BASE}/defensores`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nombre }),
-  });
-  if (!res.ok) throw new Error('Error creando defensor');
-  return res.json(); // { nombre }
+function normalizeDocValue(value) {
+  return String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
 }
 
-export async function asignarDefensor(defensor, documentos) {
-  const res = await fetch(`${API_BASE}/asignaciones`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ defensor, documentos }),
-  });
-  if (!res.ok) throw new Error('Error asignando defensor');
-  return res.json(); // { updated }
+function readDocumentoFromRegistro(registro) {
+  const source = registro && typeof registro === 'object' ? registro : {};
+  return String(
+    source.numeroIdentificacion ??
+      source['Número de identificación'] ??
+      source['Numero de identificacion'] ??
+      source.documento ??
+      source.cedula ??
+      source.Title ??
+      source.title ??
+      ''
+  ).trim();
 }
 
-export async function getCasosPorDefensor(defensor) {
-  const res = await fetch(`${API_BASE}/defensores/casos?defensor=${encodeURIComponent(defensor)}`);
-  if (!res.ok) throw new Error('Error consultando casos');
-  return res.json(); // { casos }
+export async function getPplActuacionesByDocumento(documento) {
+  const doc = String(documento ?? '').trim();
+  if (!doc) return { documento: '', actuaciones: [] };
+
+  const listing = await getPplListado();
+  const rows = Array.isArray(listing?.rows) ? listing.rows : [];
+  const docNeedle = normalizeDocValue(doc);
+
+  const actuaciones = rows
+    .map((row, rowIndex) => ({ row, rowIndex }))
+    .filter(({ row }) => normalizeDocValue(readDocumentoFromRegistro(row)) === docNeedle)
+    .map(({ row, rowIndex }) => ({
+      id: `${docNeedle}-${rowIndex}`,
+      rowIndex,
+      registro: row,
+    }));
+
+  return { documento: doc, actuaciones };
 }
+
+

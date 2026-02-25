@@ -75,36 +75,36 @@ const POST_VISITA_KEYS = {
   ],
   condenado: [
     'Fecha de recepción de pruebas aportadas por el usuario',
-    'Fecha de recepciÃ³n de pruebas aportadas por el usuario',
+    'Fecha de recepción de pruebas aportadas por el usuario',
     'Fecha de solicitud de documentos al INPEC',
-    'Fecha de recepciÃ³n de documentos del INPEC',
+    'Fecha de recepción de documentos del INPEC',
     'Fecha de presentación de solicitud a la autoridad judicial',
-    'Fecha de presentaciÃ³n de solicitud a la autoridad judicial',
+    'Fecha de presentación de solicitud a la autoridad judicial',
     'Fecha de decisión de la autoridad judicial',
-    'Fecha de decisiÃ³n de la autoridad judicial',
+    'Fecha de decisión de la autoridad judicial',
     'Sentido de la decisión',
-    'Sentido de la decisiÃ³n',
+    'Sentido de la decisión',
     'Motivo de la decisión negativa (Libertad condicional si aplica)',
-    'Motivo de la decisiÃ³n negativa (Libertad condicional si aplica)',
+    'Motivo de la decisión negativa (Libertad condicional si aplica)',
     'Motivo de la decisión negativa (Prisión domiciliaria si aplica)',
-    'Motivo de la decisiÃ³n negativa (PrisiÃ³n domiciliaria si aplica)',
+    'Motivo de la decisión negativa (Prisión domiciliaria si aplica)',
     'Fecha de recurso en caso desfavorable',
     'Sentido de la decisión que resuelve recurso',
-    'Sentido de la decisiÃ³n que resuelve recurso',
+    'Sentido de la decisión que resuelve recurso',
     'Tipo de solicitud a tramitar',
     'Autoridad a la que se dirige',
     'Fecha de la solicitud',
     'Fecha de respuesta de la solicitud',
     'Sentido de la decisión que resuelve la solicitud',
-    'Sentido de la decisiÃ³n que resuelve la solicitud',
+    'Sentido de la decisión que resuelve la solicitud',
     'Fecha de insistencia de la solicitud (si aplica)',
     'Datos adjuntos',
   ],
 };
 
 const DECISION_KEYS = {
-  sindicado: ['decisionUsuario', 'Decisión del usuario', 'DecisiÃ³n del usuario'],
-  condenado: ['Decisión del usuario', 'DecisiÃ³n del usuario', 'decisionUsuario'],
+  sindicado: ['decisionUsuario', 'Decisión del usuario', 'Decisión del usuario'],
+  condenado: ['Decisión del usuario', 'Decisión del usuario', 'decisionUsuario'],
 };
 
 const EXCLUDED_KEYS = new Set([
@@ -141,7 +141,7 @@ export function getEstadoEntrevista(registro, tipo) {
   if (decisionIndicaAvanzar(decision)) {
     return {
       code: 'PENDIENTE_TRAMITE_POST_VISITA',
-      label: 'Entrevista realizada — Pendiente trámite (post-visita)',
+      label: 'Entrevista realizada  Pendiente trámite (post-visita)',
       color: 'amber',
     };
   }

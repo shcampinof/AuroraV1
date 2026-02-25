@@ -14,24 +14,4 @@ router.get('/', (req, res) => {
   return res.json({ defensores: defensores.getAll() });
 });
 
-// GET /api/defensores/casos?defensor=Nombre
-router.get('/casos', (req, res) => {
-  const defensor = String(req.query.defensor || '').trim();
-  if (!defensor) return res.status(400).json({ message: 'Defensor requerido' });
-
-  const casos = consolidado.getCasosByDefensor(defensor);
-  return res.json({ casos });
-});
-
-// POST /api/defensores
-router.post('/', (req, res) => {
-  const nombre = String(req.body?.nombre || '').trim();
-  if (!nombre) return res.status(400).json({ message: 'Nombre requerido' });
-
-  const created = defensores.add(nombre);
-  if (!created) return res.status(400).json({ message: 'No se pudo crear defensor' });
-
-  return res.status(201).json({ nombre: created });
-});
-
 module.exports = router;

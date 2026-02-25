@@ -1,3 +1,10 @@
+import { AURORA_FIELD_IDS } from './auroraFieldIds';
+
+/**
+ * Nota de diseño:
+ * Las reglas aún aceptan labels como claves, pero se est? migrando a IDs estables.
+ * Cuando la migración termine, se puede simplificar el matching tolerante de claves.
+ */
 export type AuroraBlockId =
   | 'bloque1'
   | 'bloque2Aurora'
@@ -11,6 +18,8 @@ export type AuroraFlow = 'condenado' | 'sindicado';
 export type FormRecord = Record<string, unknown>;
 
 export interface FieldRef {
+  // Stable ID placeholder to migrate rules away from text labels in the future.
+  id?: string;
   key: string;
   label: string;
   optional?: boolean;
@@ -64,29 +73,36 @@ const FIELD = {
   q32: 'Procedencia de utilidad pública (solo para mujeres)',
   q33: 'Procedencia de pena cumplida',
   q34: 'Procedencia de acumulación de penas',
-  q35: 'Con qué proceso(s) debe acumular penas (si aplica)',
+  q35: 'Con qu? proceso(s) debe acumular penas (si aplica)',
   q36: 'Otras solicitudes a tramitar',
   q37: 'Resumen del análisis del caso',
   q38: 'Fecha de entrevista',
   q39: 'Decisión del usuario',
   q40: 'Actuación a adelantar',
+  q43: 'Fecha de entrevista psicosocial',
   q44: 'Cumple el requisito de marginalidad',
   q45: 'Cumple el requisito de jefatura de hogar',
   q46: 'Se requiere misión de trabajo',
   q47: 'Fecha de solicitud de misión de trabajo',
   q48: 'Fecha de asignación de investigador',
   q49: 'Fecha en la que se reciben todas las pruebas',
-  q50: 'Fecha de presentación de solicitud a la autoridad',
+  q50: 'Fecha de radicación de solicitud de utilidad pública',
   q51: 'Fecha de decisión de la autoridad',
   q52: 'Sentido de la decisión',
   q53: 'Motivo de la decisión negativa',
   q54: 'Se presenta recurso',
   q55: 'Fecha de recurso en caso desfavorable',
   q56: 'Sentido de la decisión que resuelve recurso',
-  // Variante bloque 5 normal (placeholder compatible con mapeos actuales)
-  b5NormalRadicacion: 'Fecha de presentación de solicitud a la autoridad',
+  b5NormalRecepcionPruebas: 'Fecha de recepción de pruebas aportadas por el usuario (si aplica)',
+  b5NormalSolicitudInpec: 'Fecha de solicitud de documentos al Inpec (si aplica)',
+  b5NormalRadicacion: 'Fecha de presentación de la solicitud a la autoridad',
   b5NormalDecision: 'Fecha de decisión de la autoridad',
+  b5NormalSentidoResuelveSolicitud: 'Sentido de la decisión que resuelve la solicitud',
 } as const;
+
+// Transitional catalog: keeps stable IDs aligned with current text keys.
+// Rules still use `key` today; this map is the migration bridge for future ID-based rules.
+export const AURORA_FIELD_CATALOG = FIELD;
 
 function toText(value: unknown): string {
   return String(value ?? '').trim();
@@ -99,12 +115,61 @@ function normalize(value: unknown): string {
     .toLowerCase();
 }
 
+function normalizeKeyLoose(value: unknown): string {
+  return normalize(value)
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function latin1ToUtf8(value: string): string {
+  try {
+    // Helps when a UTF-8 string was interpreted as latin1 (mojibake).
+    return decodeURIComponent(escape(value));
+  } catch {
+    return value;
+  }
+}
+
+function utf8ToLatin1(value: string): string {
+  try {
+    // Reverse variant to maximize key matching between mixed encodings.
+    return unescape(encodeURIComponent(value));
+  } catch {
+    return value;
+  }
+}
+
+function keyVariants(value: unknown): string[] {
+  const raw = toText(value);
+  if (!raw) return [''];
+  const variants = new Set<string>([raw]);
+  // Two conversion rounds cover common mojibake chains (utf8<->latin1 applied more than once).
+  for (let i = 0; i < 2; i += 1) {
+    const snapshot = Array.from(variants);
+    for (const v of snapshot) {
+      variants.add(latin1ToUtf8(v));
+      variants.add(utf8ToLatin1(v));
+    }
+  }
+  return Array.from(new Set(Array.from(variants).map((v) => normalizeKeyLoose(v))));
+}
+
 function isFilled(value: unknown): boolean {
   return toText(value) !== '';
 }
 
 function get(record: FormRecord, key: string): string {
-  return toText(record?.[key]);
+  if (!record) return '';
+  if (Object.prototype.hasOwnProperty.call(record, key)) {
+    return toText(record[key]);
+  }
+  const lookupVariants = keyVariants(key);
+  const matched = Object.keys(record).find((k) => {
+    const candidateVariants = keyVariants(k);
+    return candidateVariants.some((cv) => lookupVariants.includes(cv));
+  });
+  if (!matched) return '';
+  return toText(record[matched]);
 }
 
 function includesAnyInsensitive(value: unknown, needles: string[]): boolean {
@@ -116,13 +181,23 @@ function equalsInsensitive(value: unknown, expected: string): boolean {
   return normalize(value) === normalize(expected);
 }
 
-function hasNoInProcedencias30a36(record: FormRecord): boolean {
-  const keys = [FIELD.q30, FIELD.q31, FIELD.q32, FIELD.q33, FIELD.q34, FIELD.q35, FIELD.q36];
-  return keys.some((k) => {
-    const v = get(record, k);
-    if (!v) return false;
-    return equalsInsensitive(v, 'No');
-  });
+function equalsAnyInsensitive(value: unknown, expectedValues: string[]): boolean {
+  return expectedValues.some((expected) => equalsInsensitive(value, expected));
+}
+
+function isNegativeProcedencia(value: unknown): boolean {
+  const v = normalize(value);
+  if (!v) return false;
+  if (v === 'no') return true;
+  if (v.startsWith('no aplica')) return true;
+  if (v.startsWith('no cumple')) return true;
+  return false;
+}
+
+function areAllNegativeInProcedencias30a33(record: FormRecord): boolean {
+  const values = [get(record, FIELD.q30), get(record, FIELD.q31), get(record, FIELD.q32), get(record, FIELD.q33)];
+  if (!values.every((v) => isFilled(v))) return false;
+  return values.every((v) => isNegativeProcedencia(v));
 }
 
 function isUtilidadPublicaFlow(record: FormRecord): boolean {
@@ -131,6 +206,10 @@ function isUtilidadPublicaFlow(record: FormRecord): boolean {
     'Utilidad pública y prisión domiciliaria',
     'Utilidad pública y libertad condicional',
   ]);
+}
+
+function decisionUsuarioPermiteContinuar(value: unknown): boolean {
+  return normalize(value).startsWith('si');
 }
 
 function isFormularioBloqueado(record: FormRecord): boolean {
@@ -145,11 +224,8 @@ function isCasoCerrado(record: FormRecord): boolean {
   const q54 = get(record, FIELD.q54);
   const q56 = get(record, FIELD.q56);
 
-  if (hasNoInProcedencias30a36(record)) return true;
-  if (
-    decisionUsuario &&
-    !equalsInsensitive(decisionUsuario, 'Desea que el defensor(a) público(a) avance con la solicitud')
-  ) {
+  if (areAllNegativeInProcedencias30a33(record)) return true;
+  if (decisionUsuario && !decisionUsuarioPermiteContinuar(decisionUsuario)) {
     return true;
   }
   if (includesAnyInsensitive(actuacion, ['ninguna'])) return true;
@@ -173,29 +249,66 @@ export const mandatoryByBlock: MandatoryByBlock = {
     { key: 'Tiempo efectivo de pena cumplida en días (teniendo en cuenta la redención)', label: '22 Tiempo efectivo cumplido' },
     { key: 'Porcentaje de avance de pena cumplida', label: '23 Porcentaje de avance de pena cumplida' },
     { key: 'Fase de tramiento', label: '24 Fase de tratamiento' },
-    { key: '¿ Cuenta con requerimientos judiciales por otros procesos ?', label: '25 Requerimientos judiciales por otros procesos' },
-    { key: 'Fecha última calificación ', label: '26 Fecha última calificación' },
+    { key: '? Cuenta con requerimientos judiciales por otros procesos ?', label: '25 Requerimientos judiciales por otros procesos' },
+    { key: 'Fecha ?ltima calificación ', label: '26 Fecha ?ltima calificación' },
     { key: 'Calificación de conducta', label: '27 Calificación de conducta' },
   ],
   bloque3: [
-    { key: 'Defensor(a) Público(a) Asignado para tramitar la solicitud', label: '28 Defensor(a) público(a)' },
-    { key: 'Fecha de análisis jurídico del caso', label: '29 Fecha de análisis jurídico del caso' },
-    { key: FIELD.q30, label: '30 Procedencia de libertad condicional' },
-    { key: FIELD.q31, label: '31 Procedencia de prisión domiciliaria de mitad de pena' },
-    { key: FIELD.q32, label: '32 Procedencia de utilidad pública (solo para mujeres)' },
-    { key: FIELD.q33, label: '33 Procedencia de pena cumplida' },
-    { key: FIELD.q34, label: '34 Procedencia de acumulación de penas' },
-    { key: FIELD.q36, label: '36 Otras solicitudes a tramitar' },
-    { key: FIELD.q37, label: '37 Resumen del análisis del caso' },
+    {
+      id: AURORA_FIELD_IDS.B3_DEFENSOR_ASIGNADO,
+      key: 'Defensor(a) Público(a) Asignado para tramitar la solicitud',
+      label: '28 Defensor(a) público(a)',
+    },
+    {
+      id: AURORA_FIELD_IDS.B3_FECHA_ANALISIS,
+      key: 'Fecha de análisis jurídico del caso',
+      label: '29 Fecha de análisis jurídico del caso',
+    },
+    {
+      id: AURORA_FIELD_IDS.B3_PROCEDENCIA_LIBERTAD_CONDICIONAL,
+      key: FIELD.q30,
+      label: '30 Procedencia de libertad condicional',
+    },
+    {
+      id: AURORA_FIELD_IDS.B3_PROCEDENCIA_PRISION_DOMICILIARIA,
+      key: FIELD.q31,
+      label: '31 Procedencia de prisión domiciliaria de mitad de pena',
+    },
+    {
+      id: AURORA_FIELD_IDS.B3_PROCEDENCIA_UTILIDAD_PUBLICA,
+      key: FIELD.q32,
+      label: '32 Procedencia de utilidad pública (solo para mujeres)',
+    },
+    {
+      id: AURORA_FIELD_IDS.B3_PROCEDENCIA_PENA_CUMPLIDA,
+      key: FIELD.q33,
+      label: '33 Procedencia de pena cumplida',
+    },
+    {
+      id: AURORA_FIELD_IDS.B3_PROCEDENCIA_ACUMULACION_PENAS,
+      key: FIELD.q34,
+      label: '34 Procedencia de acumulación de penas',
+    },
+    {
+      id: AURORA_FIELD_IDS.B3_ANALISIS_ACTUACION,
+      key: FIELD.q36,
+      label: '36 Otras solicitudes a tramitar',
+    },
+    {
+      id: AURORA_FIELD_IDS.B3_RESUMEN_ANALISIS,
+      key: FIELD.q37,
+      label: '37 Resumen del análisis del caso',
+    },
   ],
   bloque4: [
-    { key: FIELD.q38, label: '38 Fecha de la entrevista' },
+    { key: FIELD.q38, label: '38 Fecha de la entrevista', optional: true },
     { key: FIELD.q39, label: '39 Decisión del usuario' },
     { key: FIELD.q40, label: '40 Actuación a adelantar' },
-    { key: 'Requiere pruebas', label: '41 Requiere pruebas' },
-    { key: 'Poder en caso de avanzar con la solicitud', label: '42 Poder en caso de avanzar con la solicitud' },
+    { key: 'Requiere pruebas', label: '41 Requiere pruebas', optional: true },
+    { key: 'Poder en caso de avanzar con la solicitud', label: '42 Poder en caso de avanzar con la solicitud', optional: true },
   ],
   bloque5UtilidadPublica: [
+    { key: FIELD.q43, label: '43 Fecha de entrevista psicosocial' },
     { key: FIELD.q44, label: '44 Cumple requisito de marginalidad' },
     { key: FIELD.q45, label: '45 Cumple requisito de jefatura de hogar' },
     { key: FIELD.q46, label: '46 Se requiere misión de trabajo' },
@@ -205,9 +318,23 @@ export const mandatoryByBlock: MandatoryByBlock = {
     { key: FIELD.q52, label: '52 Sentido de la decisión' },
   ],
   bloque5TramiteNormal: [
-    // Placeholder compatible con el mapeo actual. Ajustar si cambian las claves en UI/config.
-    { key: FIELD.b5NormalRadicacion, label: 'Hito principal de radicación (bloque 5 normal)' },
-    { key: FIELD.b5NormalDecision, label: 'Fecha de decisión (bloque 5 normal)' },
+    {
+      key: FIELD.b5NormalRecepcionPruebas,
+      label: '43 Fecha de recepción de pruebas aportadas por el usuario',
+      optional: true,
+    },
+    {
+      key: FIELD.b5NormalSolicitudInpec,
+      label: '44 Fecha de solicitud de documentos al Inpec',
+      optional: true,
+    },
+    { key: FIELD.b5NormalRadicacion, label: '45 Fecha de presentación de la solicitud a la autoridad' },
+    { key: FIELD.b5NormalDecision, label: '46 Fecha de decisión de la autoridad' },
+    { key: FIELD.q52, label: '47 Sentido de la decisión' },
+    { key: FIELD.q53, label: '48 Motivo de la decisión negativa', optional: true },
+    { key: FIELD.q54, label: '49 Se presenta recurso' },
+    { key: FIELD.q55, label: '50 Fecha de recurso en caso desfavorable', optional: true },
+    { key: FIELD.b5NormalSentidoResuelveSolicitud, label: '51 Sentido de la decisión que resuelve la solicitud' },
   ],
 };
 
@@ -232,19 +359,9 @@ export const conditionalBlockVisibility: BlockVariantRule[] = [
 
 export const lockRules: LockRule[] = [
   {
-    id: 'lock_por_decision_usuario_39',
-    description:
-      'Bloquea resto del formulario si Q39 = "Tiene abogado de confianza, pero desea que la defensoría pública lo asesore en la solicitud".',
-    when: (record) =>
-      equalsInsensitive(
-        get(record, FIELD.q39),
-        'Tiene abogado de confianza, pero desea que la defensoría pública lo asesore en la solicitud'
-      ),
-  },
-  {
     id: 'lock_por_actuacion_40_sindicada',
-    description: 'Bloquea resto del formulario si Q40 incluye "Ninguna porque la persona está sindicada".',
-    when: (record) => includesAnyInsensitive(get(record, FIELD.q40), ['Ninguna porque la persona está sindicada']),
+    description: 'Bloquea resto del formulario si Q40 incluye "Ninguna porque la persona est? sindicada".',
+    when: (record) => includesAnyInsensitive(get(record, FIELD.q40), ['Ninguna porque la persona est? sindicada']),
   },
 ];
 
@@ -259,26 +376,52 @@ export const dependencyRules: DependencyRule[] = [
     },
   },
   {
-    id: 'dep_q52_niega_utilidad_publica',
+    id: 'dep_q52_no_niega_utilidad_publica',
     source: { key: FIELD.q52, label: '52 Sentido de la decisión' },
-    description: 'Si Q52 = Niega utilidad pública, habilita las siguientes 3 preguntas dependientes.',
-    when: (record) => equalsInsensitive(get(record, FIELD.q52), 'Niega utilidad pública'),
+    description: 'Si Q52 != Niega utilidad pública, deshabilita Q53, Q54, Q55 y Q56.',
+    when: (record) =>
+      isUtilidadPublicaFlow(record) && !equalsInsensitive(get(record, FIELD.q52), 'Niega utilidad pública'),
     effects: {
-      enable: [FIELD.q53, FIELD.q54, FIELD.q55],
+      disable: [FIELD.q53, FIELD.q54, FIELD.q55, FIELD.q56],
     },
   },
   {
-    id: 'dep_q56_niega_utilidad_publica',
-    source: { key: FIELD.q56, label: '56 Sentido de la decisión que resuelve recurso' },
-    description: 'Si Q56 = Niega utilidad pública, habilita las siguientes 3 preguntas dependientes (si existen).',
-    when: (record) => equalsInsensitive(get(record, FIELD.q56), 'Niega utilidad pública'),
+    id: 'dep_q52_niega_utilidad_publica_habilita_53_54',
+    source: { key: FIELD.q52, label: '52 Sentido de la decisión' },
+    description: 'Si Q52 = Niega utilidad pública, habilita Q53 y Q54.',
+    when: (record) => isUtilidadPublicaFlow(record) && equalsInsensitive(get(record, FIELD.q52), 'Niega utilidad pública'),
     effects: {
-      enable: [
-        // placeholders opcionales para la rama posterior
-        '57_DEPENDIENTE_POST_56',
-        '58_DEPENDIENTE_POST_56',
-        '59_DEPENDIENTE_POST_56',
-      ],
+      enable: [FIELD.q53, FIELD.q54],
+    },
+  },
+  {
+    id: 'dep_q54_si_habilita_55_56_en_5a',
+    source: { key: FIELD.q54, label: '54 Se presenta recurso' },
+    description: 'En 5A, si Q54 = Sí y Q52 = Niega utilidad pública, habilita Q55 y Q56.',
+    when: (record) =>
+      isUtilidadPublicaFlow(record) &&
+      equalsInsensitive(get(record, FIELD.q52), 'Niega utilidad pública') &&
+      equalsAnyInsensitive(get(record, FIELD.q54), ['Sí', 'S?']),
+    effects: {
+      enable: [FIELD.q55, FIELD.q56],
+    },
+  },
+  {
+    id: 'dep_q49_no_deshabilita_q50_q51_en_5b',
+    source: { key: FIELD.q54, label: '49 Se presenta recurso' },
+    description: 'En 5B, si Q49 != Sí, deshabilita Q50 y Q51.',
+    when: (record) => !isUtilidadPublicaFlow(record) && !equalsAnyInsensitive(get(record, FIELD.q54), ['Sí', 'S?']),
+    effects: {
+      disable: [FIELD.q55, FIELD.b5NormalSentidoResuelveSolicitud],
+    },
+  },
+  {
+    id: 'dep_q49_si_habilita_q50_q51_en_5b',
+    source: { key: FIELD.q54, label: '49 Se presenta recurso' },
+    description: 'En 5B, si Q49 = Sí, habilita Q50 y Q51.',
+    when: (record) => !isUtilidadPublicaFlow(record) && equalsAnyInsensitive(get(record, FIELD.q54), ['Sí', 'S?']),
+    effects: {
+      enable: [FIELD.q55, FIELD.b5NormalSentidoResuelveSolicitud],
     },
   },
 ];

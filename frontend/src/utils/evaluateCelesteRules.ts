@@ -1,4 +1,4 @@
-import celesteFormRules, {
+import {
   type CelesteBlockId,
   type CelesteRecord,
 } from '../config/formRules.celeste';
@@ -15,7 +15,19 @@ export interface EvaluateCelesteRulesResult {
   jumpPayload?: { target: 'aurora'; startBlock: 2 };
 }
 
-const PLACEHOLDERS = new Set(['', '-', '--', 'n/a', 'na', 'null', 'undefined', 'seleccione', 'todos']);
+const PLACEHOLDERS = new Set(['', '-', '--', 'null', 'undefined', 'seleccione', 'todos']);
+
+const REQ_BLOQUE_3: string[][] = [
+  [
+    'Defensor(a) Público(a) Asignado para tramitar la solicitud',
+    'Defensor(a) Público(a) Asignado para tramitar la solicitud',
+  ],
+  ['Fecha de análisis jurídico del caso', 'Fecha de análisis jurídico del caso'],
+  [
+    'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS',
+    'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TÉRMINOS',
+  ],
+];
 
 function toText(v: unknown): string {
   return String(v ?? '').trim();
@@ -41,49 +53,26 @@ function getAnswerByKey(answers: CelesteRecord, key: string): unknown {
   return hit ? answers[hit] : undefined;
 }
 
-function areMandatoryFieldsFilled(answers: CelesteRecord, blockId: CelesteBlockId): boolean {
-  const fields = celesteFormRules.mandatoryByBlock?.[blockId] || [];
-  return fields.every((f) => f.optional || isFilled(getAnswerByKey(answers, f.key)));
+function areMandatoryFieldsFilledBloque3(answers: CelesteRecord): boolean {
+  return REQ_BLOQUE_3.every((alternatives) => alternatives.some((k) => isFilled(getAnswerByKey(answers, k))));
 }
 
-function getCloseCaseReason(answers: CelesteRecord): string | undefined {
-  const match = celesteFormRules.closeCaseRules.find((rule) => {
-    const value = getAnswerByKey(answers, rule.questionKey);
-    return rule.matches.some((m) => normalize(value) === normalize(m));
-  });
-  if (!match) return undefined;
-  return `Se cierra el caso (${match.description})`;
-}
-
-function shouldJumpToAurora(answers: CelesteRecord): boolean {
-  return celesteFormRules.jumpRules.some((rule) => rule.when(answers));
-}
-
-function resolveVisibleBlocks(answers: CelesteRecord, locked: boolean): CelesteBlockId[] {
-  const visible: CelesteBlockId[] = ['bloque1', 'bloque2Celeste'];
-  if (!locked) visible.push('bloque3Celeste');
-  if (locked) return visible;
-
-  if (visible.includes('bloque3Celeste') && areMandatoryFieldsFilled(answers, 'bloque3Celeste')) {
-    visible.push('bloque4Celeste');
-  }
+function resolveVisibleBlocks(answers: CelesteRecord): CelesteBlockId[] {
+  const visible: CelesteBlockId[] = ['bloque1', 'bloque2Celeste', 'bloque3Celeste'];
+  if (areMandatoryFieldsFilledBloque3(answers)) visible.push('bloque4Celeste', 'bloque5Celeste');
   return visible;
 }
 
 export function evaluateCelesteRules({ answers }: EvaluateCelesteRulesInput): EvaluateCelesteRulesResult {
   const safeAnswers = (answers || {}) as CelesteRecord;
-
-  const lockReason = getCloseCaseReason(safeAnswers);
-  const locked = Boolean(lockReason);
-  const jumpToAurora = shouldJumpToAurora(safeAnswers);
-  const visibleBlocks = resolveVisibleBlocks(safeAnswers, locked);
+  const visibleBlocks = resolveVisibleBlocks(safeAnswers);
 
   return {
     visibleBlocks,
-    locked,
-    lockReason,
-    jumpToAurora,
-    jumpPayload: jumpToAurora ? { target: 'aurora', startBlock: 2 } : undefined,
+    locked: false,
+    lockReason: undefined,
+    jumpToAurora: false,
+    jumpPayload: undefined,
   };
 }
 

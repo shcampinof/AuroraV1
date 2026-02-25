@@ -37,16 +37,4 @@ function getAll() {
   return cache;
 }
 
-function add(nombre) {
-  const value = String(nombre || '').trim();
-  if (!value) return null;
-
-  const current = getAll();
-  if (current.some((d) => d.toLowerCase() === value.toLowerCase())) return value;
-
-  fs.appendFileSync(CSV_PATH, `${value}\n`, 'utf8');
-  cache = [...current, value];
-  return value;
-}
-
-module.exports = { getAll, add };
+module.exports = { getAll };

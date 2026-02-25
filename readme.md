@@ -1,69 +1,57 @@
-# AuroraV1
+﻿# AuroraV1
 
-AuroraV1 es una aplicación web (React + Express) orientada al apoyo de la gestión de atención jurídica.
+Aplicacion web para gestion de atencion juridica de personas privadas de la libertad.
 
-## Estructura del repositorio
-```
+## Estructura
+
+```text
 AuroraV1/
   frontend/
   backend/
 ```
 
-## Requisitos técnicos
-- Node.js 18 o superior
+## Requisitos
+
+- Node.js 18+
 - npm
 
-## Ejecución en ambiente de desarrollo
+## Desarrollo local
 
 ### Backend
-1. Ubicarse en la carpeta `backend/`.
-2. Instalar dependencias.
-3. Ejecutar el servidor.
 
 ```bash
 cd backend
 npm install
 npm run dev
-# Alternativa:
-# npm start
 ```
 
-Verificación:
-- `http://localhost:4000/api/health`
+API de salud:
+
+```text
+http://localhost:4000/api/health
+```
 
 ### Frontend
-1. Ubicarse en la carpeta `frontend/`.
-2. Instalar dependencias.
-3. Ejecutar la aplicación.
 
 ```bash
 cd frontend
 npm install
 npm run dev
-# Alternativa (Create React App):
-# npm start
 ```
 
-## Configuración de conexión con la API
-- Opción por variable de entorno (Vite): crear `frontend/.env`
-```
+## Variable de entorno (frontend)
+
+Crear `frontend/.env`:
+
+```env
 VITE_API_BASE_URL=http://localhost:4000/api
 ```
 
-- Opción por proxy (Create React App): agregar en `frontend/package.json`
-```json
-"proxy": "http://localhost:4000"
-```
+## Calidad y pruebas (frontend)
 
-## Formatos descargables
-Los archivos disponibles para descarga deben ubicarse en:
+```bash
+cd frontend
+npm run lint
+npm run test
+npm run build
 ```
-backend/public/formatos/
-```
-
-## Control de versiones (Git)
-Elementos que no se deben versionar:
-- `node_modules/`
-- archivos `.env`
-- carpetas de compilación (`dist/`, `build/`)
-- archivos de log (`*.log`)

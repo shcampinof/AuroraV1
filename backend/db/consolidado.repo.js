@@ -1,16 +1,26 @@
-const fs = require('fs');
+﻿const fs = require('fs');
 const path = require('path');
 const { parse } = require('csv-parse/sync');
 
 const CSV_PATH = path.join(__dirname, '..', 'data', 'Datosconsolidados.csv');
 
 let rawCache = null;
-let rawHeaders = null; // headers como aparecen en el CSV (incluye vacíos)
+let rawHeaders = null; // headers como aparecen en el CSV (incluye vacios)
 let headers = null; // headers saneados (clave de objeto)
 let headerByNorm = null; // norm(header) -> header saneado
 
+function maybeDecodeMojibake(value) {
+  const raw = String(value ?? '');
+  if (!/[\u00C3\u00C2\u00E2]/.test(raw)) return raw;
+  try {
+    return Buffer.from(raw, 'latin1').toString('utf8');
+  } catch (_e) {
+    return raw;
+  }
+}
+
 function norm(value) {
-  return String(value ?? '')
+  return maybeDecodeMojibake(value)
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, ' ')
@@ -146,7 +156,6 @@ function computeTipo(row) {
     getValue(row, 'Situación Jurídica actualizada (de conformidad con la rama judicial)', '') || ''
   ).toLowerCase();
 
-  // Preferencia: si la situación jurídica actualizada dice CONDENADO, se trata como condenado.
   if (sja.includes('condenad')) return 'condenado';
   if (sj.includes('condenad')) return 'condenado';
   return 'sindicado';
@@ -158,8 +167,17 @@ function getAll() {
 
 function getColumns() {
   getRaw();
-  // Devuelve nombres del CSV (sin saneo), pero sin columnas vacías.
-  return (rawHeaders || []).map((h) => String(h ?? '')).filter((h) => h.trim() !== '');
+  const seen = new Set();
+  const unique = [];
+  for (const h of rawHeaders || []) {
+    const col = String(h ?? '');
+    if (col.trim() === '') continue;
+    const key = norm(col);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(col);
+  }
+  return unique;
 }
 
 function getByDocumento(documento) {
@@ -188,7 +206,6 @@ function updateByDocumento(documento, patch) {
   const incoming = patch && typeof patch === 'object' ? patch : {};
   const safe = incoming.data && typeof incoming.data === 'object' ? { ...incoming.data } : { ...incoming };
 
-  // Campo de estado (Activo/Cerrado) requerido por la UI wizard.
   ensureColumn('Estado del caso', '');
   ensureColumn('Sentido de la decisión que resuelve la solicitud', '');
   ensureColumn('RESUMEN DEL ANÁLISIS JURÍDICO DEL PRESENTE CASO', '');
@@ -199,7 +216,6 @@ function updateByDocumento(documento, patch) {
   ensureColumn('SENTIDO DE LA DECISIÓN QUE RESUELVE RECURSO', '');
   ensureColumn('redirectedToAurora', '');
 
-  // Limpia payload no persistible.
   delete safe.caseId;
   delete safe.casos;
   delete safe.activeCaseId;
@@ -207,14 +223,12 @@ function updateByDocumento(documento, patch) {
   delete safe.tipoPpl;
   delete safe.data;
 
-  // Parchea solo columnas existentes (o creadas explícitamente via ensureColumn).
   const row = rows[idx];
   Object.keys(safe).forEach((k) => {
     const key = getHeaderKey(k);
     if (key) row[key] = safe[k];
   });
 
-  // Mantiene el documento consistente si viene en payload con otra llave.
   row[docKey] = doc;
 
   saveRaw(rows);
@@ -276,8 +290,6 @@ function assignDefensor(documentos, defensor) {
 function getDefensoresDistinct({ tipo } = {}) {
   const defKey = getDefensorKey();
   const docKey = getDocumentoKey();
-  const sitKey = getSituacionKey();
-  const sitActKey = getSituacionActualizadaKey();
 
   if (!defKey || !docKey) return [];
   const needTipo = String(tipo || '').trim().toLowerCase();
@@ -295,29 +307,6 @@ function getDefensoresDistinct({ tipo } = {}) {
   return Array.from(set).sort();
 }
 
-function getCasosByDefensor(defensor) {
-  const needle = String(defensor || '').trim().toLowerCase();
-  if (!needle) return [];
-
-  const defKey = getDefensorKey();
-  const docKey = getDocumentoKey();
-  if (!defKey || !docKey) return [];
-
-  // Campo de estado para reportes (si no existe, se muestra '-').
-  ensureColumn('Estado del caso', '');
-
-  return getRaw()
-    .filter((row) => String(row?.[defKey] ?? '').trim().toLowerCase() === needle)
-    .map((row) => ({
-      situacionJuridica: getValue(row, 'Situación Jurídica', '-'),
-      numeroIdentificacion: String(row?.[docKey] ?? '').trim(),
-      nombreUsuario: getValue(row, 'Nombre', '-'),
-      departamentoReclusion: getValue(row, 'Departamento del lugar de privación de la libertad', '-'),
-      municipioReclusion: getValue(row, 'Distrito/municipio del lugar de privación de la libertad', '-'),
-      estado: getValue(row, 'Estado del caso', '-'),
-    }));
-}
-
 module.exports = {
   getAll,
   getColumns,
@@ -325,7 +314,6 @@ module.exports = {
   updateByDocumento,
   assignDefensor,
   getDefensoresDistinct,
-  getCasosByDefensor,
   getHeaderKey,
   getValue,
   setValue,

@@ -9,11 +9,20 @@
   --card: #ffffff;
   --green: #7fbf3f;
   --green-dark: #6aa532;
+  --sidebar-width: 290px;
+  --layout-gap: 20px;
 }
 
 *{
   box-sizing: border-box;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+html,
+body,
+#root{
+  width: 100%;
+  min-width: 0;
 }
 
 .is-hidden{
@@ -27,12 +36,12 @@ body{
 }
 
 .app-container{
-  width: 1280px;
-  max-width: 100%;
-  margin: 0 auto;
+  width: 100%;
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
 }
 
 /* =========================================================
@@ -41,10 +50,11 @@ body{
 .header{
   background-color: var(--primary);
   color: white;
+  width: 100%;
+  left: 0;
+  right: 0;
   padding: 1.3rem 2rem;
   text-align: center;
-  border-bottom-left-radius: 6px;
-  border-bottom-right-radius: 6px;
   box-shadow: 0 2px 6px rgba(0,0,0,0.15);
 }
 
@@ -64,17 +74,22 @@ body{
 /* =========================================================
    LAYOUT (SIDEBAR + CONTENT)
 ========================================================= */
-.main-layout{
-  display: flex;
-  min-height: calc(100vh - 90px);
+.app-main{
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  gap: var(--layout-gap);
+  min-height: 0;
   width: 100%;
+  min-width: 0;
 }
 
 .sidebar{
-  width: 290px;
   background-color: #f5f7fa;
   padding: 1.5rem 0.9rem;
   box-shadow: 2px 0 4px rgba(0,0,0,0.05);
+  min-height: 0;
+  overflow-y: auto;
+  min-width: 0;
 }
 
 .sidebar-button{
@@ -131,16 +146,23 @@ body{
 }
 
 .content-area{
-  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
   padding: 1.5rem 2rem;
+  overflow-y: auto;
   overflow-x: hidden;
 }
 
 .card{
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   background-color: var(--card);
   border-radius: 6px;
   padding: 1.5rem;
   box-shadow: 0 2px 4px var(--shadow);
+  overflow-wrap: anywhere;
 }
 
 /* =========================================================
@@ -168,6 +190,16 @@ body{
   margin: 0.25rem 0;
 }
 
+.home-note{
+  margin-top: 1rem;
+  color: #6b7280;
+}
+
+.home-note-email{
+  color: #4b5563;
+  font-weight: 600;
+}
+
 /* =========================================================
    FORM (inputs + grids)
 ========================================================= */
@@ -175,22 +207,66 @@ body{
   display: flex;
   flex-direction: column;
   margin-bottom: 0.8rem;
+  min-width: 0;
 }
 
 .form-field label{
+  display: block;
+  width: 100%;
   font-size: 0.9rem;
   font-weight: 700;
   margin-bottom: 0.25rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.3;
 }
 
 .form-field input,
 .form-field select,
 .form-field textarea{
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   padding: 0.55rem 0.6rem;
   border-radius: 4px;
   border: 2px solid #143b7a;
   font-size: 0.95rem;
   background: #fff;
+}
+
+.form-field select{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* =========================================================
+   DROPDOWNS / SELECTS (global)
+========================================================= */
+select,
+input[list],
+datalist{
+  max-width: 100%;
+  min-width: 0;
+}
+
+select{
+  display: block;
+  width: 100%;
+}
+
+input[list]{
+  width: 100%;
+}
+
+/* Utilidades para dropdowns custom (si se incorporan luego). */
+.dropdown-menu,
+.select-menu{
+  max-width: min(100vw - 16px, 520px);
+  max-height: 60vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .form-field input:disabled,
@@ -233,6 +309,7 @@ body{
   margin-top: 0.75rem;
   font-size: 0.9rem;
   color: #555;
+  overflow-wrap: anywhere;
 }
 
 .accion-pill{
@@ -280,12 +357,16 @@ body{
 /* Buscador (Formulario Entrevista) */
 .search-row{
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   align-items: flex-end; /* alinea al nivel del input */
+  min-width: 0;
 }
 
 .search-row .form-field{
   margin-bottom: 0;
+  flex: 1 1 260px;
+  min-width: 0;
 }
 
 .search-row .form-field input{
@@ -293,8 +374,21 @@ body{
   box-sizing: border-box;
 }
 
+/* Variante de buscador principal del formulario */
+.search-row--form-main{
+  max-width: 820px;
+}
+
+@media (min-width: 769px){
+  .search-row--form-main .form-field{
+    flex: 1 1 520px;
+    max-width: 620px;
+  }
+}
+
 /* Botones */
 .primary-button{
+  max-width: 100%;
   padding: 0.75rem 1.4rem;
   border-radius: 6px;
   border: none;
@@ -330,6 +424,8 @@ body{
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  white-space: normal;
+  text-align: center;
 }
 
 .aurora-tab{
@@ -364,14 +460,17 @@ body{
 /* Acciones centradas */
 .actions-center{
   display:flex;
+  flex-wrap: wrap;
   flex-direction: column;
   align-items:center;
   gap: 1rem;
   margin-top: 1.8rem;
+  min-width: 0;
 }
 
 /* Guardar */
 .save-button{
+  max-width: 100%;
   padding: 0.85rem 2.7rem;
   background-color: var(--green);
   color: white;
@@ -391,27 +490,70 @@ body{
   opacity: 0.95;
 }
 
+.question-40-highlight{
+  background-color: var(--primary);
+  color: #ffffff;
+  border: 1px solid rgba(255,255,255,0.35);
+  border-radius: 8px;
+  padding: 0.55rem 0.6rem 0.2rem;
+}
+
+.question-40-highlight label{
+  color: #ffffff;
+}
+
+.question-40-highlight .form-field{
+  margin-bottom: 0;
+}
+
+.question-40-highlight .form-field select{
+  background-color: rgba(255,255,255,0.12);
+  color: #ffffff;
+  border-color: rgba(255,255,255,0.85);
+}
+
+/* Mantiene legible el desplegable nativo del navegador en P40. */
+.question-40-highlight .form-field select option,
+.question-40-highlight .form-field select optgroup{
+  color: #111827;
+  background-color: #ffffff;
+}
+
+.fuga-button{
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 10000;
+  padding: 0.78rem 1.1rem;
+  border: none;
+  border-radius: 10px;
+  background: #b42318;
+  color: #fff;
+  font-weight: 900;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.22);
+}
+
+.fuga-button:hover{
+  background: #911d13;
+}
+
+.fuga-button:disabled{
+  background: #8d8d8d;
+  cursor: not-allowed;
+}
+
 /* =========================================================
-   USUARIOS ASIGNADOS (tabla + filtros)
+   TABLAS (base compartida y neutra)
 ========================================================= */
-.asignados-layout{
-  display:flex;
-  flex-direction: column;
-  gap: 1.2rem;
-  align-items: stretch;
-}
-
-.asignados-table{
-  flex: 1;
-  min-width: 0;
-  width: 100%;
-}
-
 .table-container{
-  overflow: auto;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: auto;
   border-radius: 6px;
   border: 1px solid #e2e5ea;
   max-width: 100%;
+  -webkit-overflow-scrolling: touch;
 }
 
 .table-container.tall{
@@ -450,41 +592,289 @@ body{
 }
 
 /* =========================================================
-   AURORA TABLE (solo RegistrosAsignados)
+   TABLA USUARIOS ASIGNADOS
 ========================================================= */
-.aurora-table{
-  table-layout: fixed;
-  min-width: 1420px;
-  font-size: 0.82rem;
+.asignados-layout{
+  display:flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  align-items: stretch;
 }
 
-.aurora-table th,
-.aurora-table td{
+.asignados-table-shell{
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+
+.asignados-table-container{
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+.asignados-table{
+  width: max-content;
+  min-width: 100%;
+  table-layout: fixed;
+  font-size: 0.92rem;
+}
+
+.asignados-table thead th{
+  text-align: left;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  line-height: 1.2;
+  max-height: 2.4em;
+  overflow: hidden;
+}
+
+.asignados-table tbody td{
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding: 0.45rem 0.5rem;
 }
 
-.aurora-table td{
-  white-space: nowrap;
-  line-height: 1.2;
-  font-size: 0.82rem;
-}
-
-.aurora-table th{
-  line-height: 1.12;
-  font-size: 0.78rem;
+.asignados-table .aurora-th-label{
+  display: -webkit-box;
   white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  max-height: 2.4em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.asignados-table .estadoBadge{
   vertical-align: middle;
 }
 
-.aurora-table .aurora-th-label{
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  line-clamp: 2;
-  max-height: calc(1.12em * 2);
+/* =========================================================
+   HISTORIAL DE ACTUACIONES (FORMULARIO)
+========================================================= */
+.historial-actuaciones{
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.ppl-summary-card{
+  background: #f8fafc;
+  border: 1px solid #d9e3f3;
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+}
+
+.ppl-summary-line{
+  margin: 0;
+  line-height: 1.45;
+}
+
+.historial-actuaciones-header{
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.historial-actuaciones-title{
+  margin: 0;
+  flex: 1 1 360px;
+}
+
+.historial-actions-wrap{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: flex-end;
+}
+
+.historial-create-button{
+  flex: 0 0 auto;
+}
+
+.historial-actuaciones-table-container{
+  max-height: 360px;
+}
+
+.historial-actuaciones-table{
+  min-width: 760px;
+  table-layout: fixed;
+}
+
+.historial-actuaciones-table th,
+.historial-actuaciones-table td{
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.historial-actuaciones-table th:nth-child(1),
+.historial-actuaciones-table td:nth-child(1){
+  width: 32%;
+}
+
+.historial-actuaciones-table th:nth-child(2),
+.historial-actuaciones-table td:nth-child(2){
+  width: 28%;
+}
+
+.historial-actuaciones-table th:nth-child(3),
+.historial-actuaciones-table td:nth-child(3){
+  width: 22%;
+}
+
+.historial-actuaciones-table th:nth-child(4),
+.historial-actuaciones-table td:nth-child(4){
+  width: 18%;
+  white-space: nowrap;
+}
+
+.historial-action-button{
+  padding: 0.44rem 0.7rem;
+  font-size: 0.82rem;
+}
+
+.historial-row-active{
+  background-color: #f2f8ff;
+}
+
+/* =========================================================
+   TABLA ASIGNACION DEFENSORES PAG
+========================================================= */
+.pag-layout{
+  display:flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  align-items: stretch;
+}
+
+.pag-table-shell{
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+
+.tabla-asignacion-wrapper,
+.pag-table-container{
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tabla-asignacion,
+.pag-table{
+  width: 100%;
+  table-layout: fixed;
+  min-width: 1100px;
+}
+
+.tabla-asignacion thead th,
+.pag-table thead th{
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  line-height: 1.2;
+}
+
+/* PAG: evitar compresion de columnas y quiebres agresivos de texto */
+.pag-table{
+  min-width: 1450px;
+  table-layout: auto;
+}
+
+.pag-table th,
+.pag-table td{
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.pag-table td{
+  white-space: normal;
+}
+
+.pag-table td:nth-child(7),
+.pag-table td:nth-child(11){
+  white-space: nowrap;
+}
+
+.tabla-asignacion th:nth-child(1),
+.tabla-asignacion td:nth-child(1),
+.pag-table th:nth-child(1),
+.pag-table td:nth-child(1){
+  width: 40px;
+}
+
+.tabla-asignacion th:nth-child(2),
+.tabla-asignacion td:nth-child(2),
+.pag-table th:nth-child(2),
+.pag-table td:nth-child(2){
+  width: 12%;
+}
+
+.tabla-asignacion th:nth-child(3),
+.tabla-asignacion td:nth-child(3),
+.pag-table th:nth-child(3),
+.pag-table td:nth-child(3){
+  width: 12%;
+}
+
+.tabla-asignacion th:nth-child(4),
+.tabla-asignacion td:nth-child(4),
+.pag-table th:nth-child(4),
+.pag-table td:nth-child(4){
+  width: 13%;
+}
+
+.tabla-asignacion th:nth-child(5),
+.tabla-asignacion td:nth-child(5),
+.pag-table th:nth-child(5),
+.pag-table td:nth-child(5){
+  width: 10%;
+}
+
+.tabla-asignacion th:nth-child(6),
+.tabla-asignacion td:nth-child(6),
+.pag-table th:nth-child(6),
+.pag-table td:nth-child(6){
+  width: 10%;
+}
+
+.tabla-asignacion th:nth-child(7),
+.tabla-asignacion td:nth-child(7),
+.pag-table th:nth-child(7),
+.pag-table td:nth-child(7){
+  width: 10%;
+}
+
+.tabla-asignacion th:nth-child(8),
+.tabla-asignacion td:nth-child(8),
+.pag-table th:nth-child(8),
+.pag-table td:nth-child(8){
+  width: 11%;
+}
+
+.tabla-asignacion th:nth-child(9),
+.tabla-asignacion td:nth-child(9),
+.pag-table th:nth-child(9),
+.pag-table td:nth-child(9){
+  width: 10%;
+}
+
+.tabla-asignacion th:nth-child(10),
+.tabla-asignacion td:nth-child(10),
+.pag-table th:nth-child(10),
+.pag-table td:nth-child(10){
+  width: 14%;
+}
+
+.tabla-asignacion th:nth-child(11),
+.tabla-asignacion td:nth-child(11),
+.pag-table th:nth-child(11),
+.pag-table td:nth-child(11){
+  width: 12%;
 }
 
 /* =========================================================
@@ -528,14 +918,17 @@ body{
 }
 
 .estadoBadge{
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0.2rem 0.58rem;
   border-radius: 999px;
   font-weight: 800;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   line-height: 1.2;
   border: 1px solid transparent;
   white-space: nowrap;
+  text-align: center;
 }
 
 .estado--verde{
@@ -792,8 +1185,13 @@ body{
    RESPONSIVE (consolidado)
 ========================================================= */
 @media (max-width: 1024px){
-  .sidebar{ width: 240px; }
+  :root{
+    --sidebar-width: 240px;
+    --layout-gap: 16px;
+  }
+
   .content-area{ padding: 1rem; }
+  .search-row .form-field{ flex-basis: 220px; }
   .tools-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
@@ -807,8 +1205,9 @@ body{
 
 @media (max-width: 768px){
   /* Layout: menú arriba */
-  .main-layout{
-    flex-direction: column;
+  .app-main{
+    grid-template-columns: 1fr;
+    gap: 0;
     min-height: auto;
   }
 
@@ -856,6 +1255,10 @@ body{
     align-items: stretch;
   }
 
+  .search-row .form-field{
+    flex-basis: 100%;
+  }
+
   .primary-button--search{
     width: 100%;
   }
@@ -868,13 +1271,66 @@ body{
     width: 100%;
   }
 
-  /* Usuarios asignados: layout en columna */
+  .toast-wrap{
+    right: 12px;
+    left: 12px;
+    bottom: 12px;
+    max-width: none;
+  }
+
+  .toast-wrap--center{
+    left: 50%;
+    right: auto;
+    top: 50%;
+    width: min(95vw, 560px);
+  }
+
+  .toast{
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  /* Usuarios asignados */
   .asignados-layout{
     flex-direction: column;
   }
 
-  /* Tabla: permitir scroll horizontal controlado */
-  .data-table{
+  .asignados-table-container{
+    max-height: 70vh;
+  }
+
+  .asignados-table{
+    min-width: 100%;
+    font-size: 0.78rem;
+  }
+
+  .asignados-table th,
+  .asignados-table td{
+    padding: 0.5rem 0.55rem;
+  }
+
+  .asignados-table thead th{
+    font-size: 0.72rem;
+  }
+
+  .historial-actuaciones-header{
+    align-items: stretch;
+  }
+
+  .historial-create-button{
+    width: 100%;
+  }
+
+  .historial-actuaciones-table{
+    min-width: 700px;
+  }
+
+  /* Asignacion defensores PAG */
+  .pag-layout{
+    flex-direction: column;
+  }
+
+  .pag-table{
     min-width: 900px;
   }
 
@@ -887,8 +1343,22 @@ body{
     width: 100%;
     text-align: center;
   }
+
+  .dropdown-menu,
+  .select-menu{
+    max-width: calc(100vw - 12px);
+    max-height: 55vh;
+  }
 }
 
 @media (max-width: 420px){
+  .card{
+    padding: 1rem;
+  }
+
   .sidebar{ grid-template-columns: 1fr; }
 }
+
+
+
+

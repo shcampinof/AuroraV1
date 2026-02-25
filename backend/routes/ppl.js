@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const consolidado = require('../db/consolidado.repo');
 
 const router = express.Router();
@@ -16,7 +16,7 @@ router.get('/', (req, res) => {
   return res.json({ tipo, columns: consolidado.getColumns(), rows });
 });
 
-// Listado de condenados (mapeado para tabla de asignación)
+// Listado de condenados (mapeado para tabla de asignacion)
 router.get('/condenados', (req, res) => {
   const rows = consolidado
     .getAll()
@@ -29,7 +29,9 @@ router.get('/condenados', (req, res) => {
       municipioLugarReclusion: consolidado.getValue(row, 'Distrito/municipio del lugar de privación de la libertad', ''),
       autoridadCargo: consolidado.getValue(row, 'Autoridad a cargo', ''),
       numeroProceso: consolidado.getValue(row, 'Número de proceso', ''),
-      situacionJuridica: consolidado.getValue(row, 'Situación Jurídica', ''),
+      situacionJuridica:
+        consolidado.getValue(row, 'Situación Jurídica', '') ||
+        consolidado.getValue(row, 'Situación Jurídica actualizada (de conformidad con la rama judicial)', ''),
       defensorAsignado: consolidado.getValue(
         row,
         'Defensor(a) Público(a) Asignado para tramitar la solicitud',

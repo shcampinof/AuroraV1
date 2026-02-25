@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getFormatos, getFormatoDownloadUrl } from '../services/api.js';
+import { reportError } from '../utils/reportError.js';
 
 function CajaHerramientas() {
   const [formatos, setFormatos] = useState([]);
@@ -14,7 +15,7 @@ function CajaHerramientas() {
         const data = await getFormatos();
         setFormatos(data);
       } catch (e) {
-        console.error(e);
+        reportError(e, 'caja-herramientas');
         setError('Error cargando formatos.');
       } finally {
         setCargando(false);
