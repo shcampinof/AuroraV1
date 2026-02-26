@@ -41,6 +41,37 @@ router.get('/condenados', (req, res) => {
   return res.json({ rows });
 });
 
+// Historial de actuaciones por documento
+router.get('/:documento/actuaciones', (req, res) => {
+  const doc = req.params.documento;
+  const base = consolidado.getByDocumento(doc);
+  if (!base) return res.status(404).json({ message: 'No encontrado' });
+
+  const actuaciones = consolidado.getActuacionesByDocumento(doc);
+  return res.json({ documento: doc, actuaciones });
+});
+
+// Crear actuación persistente por documento
+router.post('/:documento/actuaciones', (req, res) => {
+  const doc = req.params.documento;
+  const body = req.body || {};
+
+  if (!consolidado.getByDocumento(doc)) {
+    return res.status(404).json({ message: 'No encontrado' });
+  }
+
+  const actuacion = consolidado.createActuacionByDocumento(doc, body);
+  if (!actuacion) {
+    return res.status(400).json({ message: 'No fue posible crear la actuación' });
+  }
+
+  return res.status(201).json({
+    documento: doc,
+    actuacion,
+    registro: actuacion.registro,
+  });
+});
+
 // Busqueda unificada por documento: devuelve tipo + registro
 router.get('/:documento', (req, res) => {
   const doc = req.params.documento;
@@ -58,6 +89,7 @@ router.put('/:documento', (req, res) => {
 
   if (consolidado.getByDocumento(doc)) {
     const upd = consolidado.updateByDocumento(doc, body);
+    if (!upd) return res.status(404).json({ message: 'No encontrado' });
     return res.json({ tipo: consolidado.computeTipo(upd), registro: upd });
   }
 

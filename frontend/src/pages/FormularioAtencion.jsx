@@ -1,11 +1,12 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getPplByDocumento, updatePpl } from '../services/api.js';
+import { createPplActuacion, getPplByDocumento, updatePpl } from '../services/api.js';
 import Toast from '../components/Toast.jsx';
 import HistorialActuacionesPPL from '../components/HistorialActuacionesPPL.jsx';
 import { evaluateAuroraRules } from '../utils/evaluateAuroraRules.ts';
 import { evaluateCelesteRules } from '../utils/evaluateCelesteRules.ts';
 import { AURORA_FIELD_IDS } from '../config/auroraFieldIds.ts';
 import { reportError } from '../utils/reportError.js';
+import { getLabelAccionCaso } from '../utils/actuacionesLabels.js';
 
 const OPCIONES_TIPO_IDENTIFICACION = ['CC', 'CE', 'PASAPORTE', 'OTRA'];
 const OPCIONES_SI_NO = ['Sí', 'No'];
@@ -427,7 +428,22 @@ const CAMPOS_BASE_NUEVA_ACTUACION = new Set([
   'lugar de privacion de la libertad',
   'nombre del lugar de privacion de la libertad',
   'departamento del lugar de privacion de la libertad',
-  'distrito/municipio del lugar de privacion de la libertad',
+  'distrito municipio del lugar de privacion de la libertad',
+  'la persona sigue en el cdt',
+  'autoridad a cargo',
+  'numero de proceso',
+  'delitos',
+  'fecha de captura',
+  'pena anos meses y dias',
+  'pena total en dias',
+  'tiempo que la persona lleva privada de la libertad en dias',
+  'redencion total acumulada en dias',
+  'tiempo efectivo de pena cumplida en dias teniendo en cuenta la redencion',
+  'porcentaje de avance de pena cumplida',
+  'fase de tramiento',
+  'cuenta con requerimientos judiciales por otros procesos',
+  'fecha ultima calificacion',
+  'calificacion de conducta',
   'defensor(a) publico(a) asignado para tramitar la solicitud',
   'pag',
   '__rowindex',
@@ -437,7 +453,7 @@ function normalizeFieldKey(value) {
   return String(value ?? '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\s+/g, ' ')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
     .trim()
     .toLowerCase();
 }
@@ -562,6 +578,7 @@ export default function FormularioAtencion({ numeroInicial }) {
   const [auroraAbrirBloque2, setAuroraAbrirBloque2] = useState(false);
   const [historialRefreshToken, setHistorialRefreshToken] = useState(0);
   const [actuacionActivaId, setActuacionActivaId] = useState('');
+  const [textoAccionCaso, setTextoAccionCaso] = useState(getLabelAccionCaso(false));
   const [creandoActuacion, setCreandoActuacion] = useState(false);
   const [mostrarFormularioDetalle, setMostrarFormularioDetalle] = useState(false);
   const bloque2AuroraRef = useRef(null);
@@ -608,6 +625,22 @@ export default function FormularioAtencion({ numeroInicial }) {
     [numeroBusqueda, registro]
   );
 
+  const buildUpdatePayload = useCallback(
+    (nextData) => {
+      const payload = { data: nextData };
+      const id = String(actuacionActivaId || '').trim();
+      if (id) payload.actuacionId = id;
+      return payload;
+    },
+    [actuacionActivaId]
+  );
+
+  const handleActionLabelChange = useCallback((nextLabel) => {
+    const incoming = String(nextLabel || '').trim();
+    if (!incoming) return;
+    setTextoAccionCaso((prev) => (prev === incoming ? prev : incoming));
+  }, []);
+
   async function buscarRegistro(numero) {
     const doc = String(numero || '').trim();
     if (!doc) {
@@ -624,12 +657,14 @@ export default function FormularioAtencion({ numeroInicial }) {
       setNumeroBusqueda(doc);
       setRegistro(wrapRegistroForLookup(data?.registro || null));
       setActuacionActivaId('');
+      setTextoAccionCaso(getLabelAccionCaso(false));
       setMostrarFormularioDetalle(false);
       setHistorialRefreshToken((prev) => prev + 1);
     } catch (e) {
       reportError(e, 'formulario-entrevista:buscar');
       setRegistro(null);
       setActuacionActivaId('');
+      setTextoAccionCaso(getLabelAccionCaso(false));
       setMostrarFormularioDetalle(false);
       setError('No se encontro el usuario con ese numero.');
     } finally {
@@ -641,6 +676,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     setRegistro(null);
     setNumeroBusqueda('');
     setActuacionActivaId('');
+    setTextoAccionCaso(getLabelAccionCaso(false));
     setMostrarFormularioDetalle(false);
     setError('');
     setGuardadoOk(false);
@@ -676,8 +712,14 @@ export default function FormularioAtencion({ numeroInicial }) {
     setMostrarFormularioDetalle(true);
   }
 
-  async function handleCrearNuevaActuacion() {
+  async function handleCrearNuevaActuacion(options = {}) {
     if (!registro) {
+      setError('Debe cargar un usuario antes de crear una nueva actuacion.');
+      return;
+    }
+
+    const doc = getDocumentoActual(registro);
+    if (!doc) {
       setError('Debe cargar un usuario antes de crear una nueva actuacion.');
       return;
     }
@@ -685,13 +727,26 @@ export default function FormularioAtencion({ numeroInicial }) {
     setCreandoActuacion(true);
     try {
       const nextDraft = buildNuevaActuacionDraft(registro);
-      setRegistro(wrapRegistroForLookup(nextDraft));
-      setActuacionActivaId(`nueva-${Date.now()}`);
+      const response = await createPplActuacion(doc, { data: nextDraft });
+      const createdActuacion =
+        response?.actuacion && typeof response.actuacion === 'object' ? response.actuacion : null;
+      const createdRegistro =
+        createdActuacion?.registro && typeof createdActuacion.registro === 'object'
+          ? createdActuacion.registro
+          : response?.registro && typeof response.registro === 'object'
+            ? response.registro
+            : null;
+
+      if (!createdRegistro) throw new Error('Respuesta invalida al crear actuacion');
+
+      setRegistro(wrapRegistroForLookup(createdRegistro));
+      setActuacionActivaId(String(createdActuacion?.id ?? ''));
       setError('');
       setGuardadoOk(false);
       setToastMessage('Nueva actuacion iniciada. Complete el formulario y guarde cuando finalice.');
       setToastOpen(true);
-      setMostrarFormularioDetalle(false);
+      setMostrarFormularioDetalle(Boolean(options?.abrirFormulario));
+      setHistorialRefreshToken((prev) => prev + 1);
     } catch (e) {
       reportError(e, 'formulario-entrevista:crear-actuacion');
       setError('No fue posible iniciar una nueva actuacion para este PPL.');
@@ -920,7 +975,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     const persistirCierreAutomatico = async () => {
       try {
         const nextRecord = { ...unwrapRegistro(registro), 'Estado del caso': 'Cerrado' };
-        await updatePpl(doc, { data: nextRecord });
+        await updatePpl(doc, buildUpdatePayload(nextRecord));
         setRegistro(wrapRegistroForLookup(nextRecord));
         setToastMessage('Caso cerrado y avances guardados automáticamente');
         setToastOpen(true);
@@ -933,7 +988,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     };
 
     persistirCierreAutomatico();
-  }, [registro, auroraActivo, cierrePorDecisionFinalBloque5, getDocumentoActual]);
+  }, [registro, auroraActivo, cierrePorDecisionFinalBloque5, getDocumentoActual, buildUpdatePayload]);
 
   useEffect(() => {
     if (!registro || !auroraActivo) return;
@@ -1035,7 +1090,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     try {
       setError('');
       setToastOpen(false);
-      await updatePpl(doc, { data: unwrapRegistro(registro) });
+      await updatePpl(doc, buildUpdatePayload(unwrapRegistro(registro)));
       setToastMessage('Aurora - Cambios guardados correctamente');
       setToastOpen(true);
       setGuardadoOk(true);
@@ -1087,7 +1142,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     setToastOpen(false);
 
     try {
-      await updatePpl(doc, { data: next });
+      await updatePpl(doc, buildUpdatePayload(next));
       setToastMessage('Formulario guardado');
       setToastOpen(true);
 
@@ -1109,7 +1164,7 @@ export default function FormularioAtencion({ numeroInicial }) {
     } finally {
       setSaltoCelesteGuardando(false);
     }
-  }, [getDocumentoActual, registro, saltoCelesteGuardando]);
+  }, [buildUpdatePayload, getDocumentoActual, registro, saltoCelesteGuardando]);
 
   useEffect(() => {
     if (!auroraAbrirBloque2) return;
@@ -1183,15 +1238,17 @@ export default function FormularioAtencion({ numeroInicial }) {
               numeroDocumento={getDocumentoActual(registro)}
               onSelectActuacion={handleSeleccionarActuacion}
               onCrearNuevaActuacion={handleCrearNuevaActuacion}
+              onIniciarActuacion={() => handleCrearNuevaActuacion({ abrirFormulario: true })}
               refreshToken={historialRefreshToken}
               actuacionActivaId={actuacionActivaId}
               creandoActuacion={creandoActuacion}
+              onActionLabelChange={handleActionLabelChange}
             />
           </div>
 
           {!mostrarFormularioDetalle && (
             <p className="hint-text" style={{ marginTop: '0.75rem' }}>
-              {displayText('Vista previa activa. Seleccione "Ver caso" para abrir el formulario precargado.')}
+              {displayText(`Vista previa activa. Seleccione "${textoAccionCaso}" para abrir el formulario precargado.`)}
             </p>
           )}
 
@@ -1376,7 +1433,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                     onChange={(e) => handleChange('Porcentaje de avance de pena cumplida', e.target.value)}
                   />
                   {porcentajeAvancePena != null && (
-                    <div className="progress-wrap" aria-label="Barra de avance de pena cumplida">
+                    <div className="progress-wrap progress-wrap--q23" aria-label="Barra de avance de pena cumplida">
                       <div className="progress-bar">
                         <div className="progress-fill" style={{ width: `${porcentajeAvancePena}%` }} />
                       </div>

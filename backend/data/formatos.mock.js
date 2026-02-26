@@ -1,16 +1,57 @@
-// Lista base (títulos tomados de tu pantalla "Caja de Herramientas").
-// OJO: filename son placeholders; reemplázalos por tus nombres reales.
+// Lista base de la pestana "Caja de Herramientas".
+// filename debe coincidir exactamente con el archivo en backend/public/formatos.
 const formatos = [
-  { id: 'f1', titulo: 'INPEC-Asignación cupo TEE - JETEE', filename: 'INPEC_Asignacion_cupo_TEE_JETEE.docx' },
-  { id: 'f2', titulo: 'JEPMS-Aplicación retroactiva 2x3 redención por trabajo', filename: 'JEPMS_Aplicacion_retroactiva_2x3_trabajo.docx' },
-  { id: 'f3', titulo: 'JEPMS-Autorización para radicar solicitud UP', filename: 'JEPMS_Autorizacion_radicar_UP.docx' },
-  { id: 'f4', titulo: 'INPEC-Cambio de fase tratamiento penitenciario - CET', filename: 'INPEC_Cambio_fase_tratamiento_CET.docx' },
-  { id: 'f5', titulo: 'Aplicación retroactiva y analógica 2x3 redención otras actividades', filename: 'Aplicacion_retroactiva_analogica_2x3_otras_actividades.docx' },
-  { id: 'f6', titulo: 'JEPMS-Acumulación jurídica de penas', filename: 'JEPMS_Acumulacion_juridica_penas.docx' },
-  { id: 'f7', titulo: 'Solicitud libertad condicional', filename: 'Solicitud_libertad_condicional.docx' },
-  { id: 'f8', titulo: 'Entrevista - Pruebas tipo para arraigo', filename: 'Entrevista_Pruebas_arraigo.docx' },
-  { id: 'f9', titulo: 'JEPMS-Traslado del proceso de Distrito Judicial por traslado de persona', filename: 'JEPMS_Traslado_proceso_distrito_judicial.docx' },
-  { id: 'f10', titulo: 'Solicitud prisión domiciliaria', filename: 'Solicitud_prision_domiciliaria.docx' },
+  {
+    id: 'f1',
+    titulo: 'INPEC-Asignacion cupo TEE - JETEE',
+    filename: 'INPEC-Asignacio\u0301n cupo TEE - JETEE.docx',
+  },
+  {
+    id: 'f2',
+    titulo: 'JEPMS-Aplicacion retroactiva 2x3 redencion por trabajo',
+    filename: 'JEPMS-Aplicacio\u0301n retroactiva 2x3 redencio\u0301n por trabajo.docx',
+  },
+  {
+    id: 'f3',
+    titulo: 'JEPMS-Autorizacion para radicar solicitud UP',
+    filename: 'JEPMS-Autorizacio\u0301n para radicar solicitud UP.docx',
+  },
+  {
+    id: 'f4',
+    titulo: 'INPEC-Cambio de fase tratamiento penitenciario - CET',
+    filename: 'INPEC-Cambio de fase tratamiento penitenciario - CET.docx',
+  },
+  {
+    id: 'f5',
+    titulo: 'JEPMS-Aplicacion retroactiva y analogica 2x3 redencion otras actividades',
+    filename: 'JEPMS-Aplicacio\u0301n retroactiva y analo\u0301gica 2x3 redencio\u0301n otras actividades.docx',
+  },
+  {
+    id: 'f6',
+    titulo: 'JEPMS-Acumulacion juridica de penas',
+    filename: 'JEPMS-Acumulacio\u0301n juri\u0301dica de penas.docx',
+  },
+  {
+    id: 'f7',
+    titulo: 'JEPMS-Solicitud libertad condicional',
+    filename: 'JEPMS-Solicitud libertad condicional.docx',
+  },
+  {
+    id: 'f8',
+    titulo: 'Entrevista - Pruebas tipo para arraigo',
+    filename: 'Entrevista - Pruebas tipo para arraigo.pdf',
+  },
+  {
+    id: 'f9',
+    titulo: 'JEPMS-Traslado del proceso de Distrito Judicial por traslado de persona privada de la libertad',
+    filename:
+      'JEPMS-Traslado del proceso de Distrito Judicial por traslado de persona privada de la libertad.docx',
+  },
+  {
+    id: 'f10',
+    titulo: 'JEPMS-Solicitud prision domiciliaria',
+    filename: 'JEPMS-Solicitud prisio\u0301n domiciliaria.docx',
+  },
 ];
 
 function listFormatos() {

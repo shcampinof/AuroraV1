@@ -192,6 +192,138 @@ function getByDocumento(documento) {
   return hit;
 }
 
+function buildActuacionId(documento, rowIndex) {
+  return `${norm(documento)}-${rowIndex}`;
+}
+
+function parseRowIndexFromActuacionId(actuacionId) {
+  const text = String(actuacionId ?? '').trim();
+  if (!text) return null;
+  const match = text.match(/-(\d+)$/);
+  if (!match) return null;
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function normalizeBaseFieldName(value) {
+  return maybeDecodeMojibake(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+const CAMPOS_BASE_NUEVA_ACTUACION = new Set([
+  'nombre',
+  'nombre usuario',
+  'tipo de indentificacion',
+  'tipo de identificacion',
+  'numero de identificacion',
+  'situacion juridica',
+  'situacion juridica actualizada de conformidad con la rama judicial',
+  'genero',
+  'enfoque etnico racial cultural',
+  'nacionalidad',
+  'fecha de nacimiento',
+  'edad',
+  'lugar de privacion de la libertad',
+  'nombre del lugar de privacion de la libertad',
+  'departamento del lugar de privacion de la libertad',
+  'distrito municipio del lugar de privacion de la libertad',
+  'la persona sigue en el cdt',
+  'autoridad a cargo',
+  'numero de proceso',
+  'delitos',
+  'fecha de captura',
+  'pena anos meses y dias',
+  'pena total en dias',
+  'tiempo que la persona lleva privada de la libertad en dias',
+  'redencion total acumulada en dias',
+  'tiempo efectivo de pena cumplida en dias teniendo en cuenta la redencion',
+  'porcentaje de avance de pena cumplida',
+  'fase de tramiento',
+  'cuenta con requerimientos judiciales por otros procesos',
+  'fecha ultima calificacion',
+  'calificacion de conducta',
+  'pag',
+  'defensor a publico a asignado para tramitar la solicitud',
+  '__rowindex',
+]);
+
+function isBaseFieldForNuevaActuacion(value) {
+  return CAMPOS_BASE_NUEVA_ACTUACION.has(normalizeBaseFieldName(value));
+}
+
+function getRawHeaderByKey(headerKey) {
+  getRaw();
+  const idx = headers.indexOf(headerKey);
+  if (idx < 0) return headerKey;
+  return rawHeaders[idx] || headerKey;
+}
+
+function getActuacionesByDocumento(documento) {
+  const doc = String(documento ?? '').trim();
+  if (!doc) return [];
+
+  const docKey = getDocumentoKey();
+  if (!docKey) return [];
+
+  return getRaw()
+    .map((registro, rowIndex) => ({ registro, rowIndex }))
+    .filter(({ registro }) => String(registro?.[docKey] ?? '').trim() === doc)
+    .map(({ registro, rowIndex }) => ({
+      id: buildActuacionId(doc, rowIndex),
+      rowIndex,
+      registro,
+    }));
+}
+
+function createActuacionByDocumento(documento, payload) {
+  const doc = String(documento ?? '').trim();
+  if (!doc) return null;
+
+  const docKey = getDocumentoKey();
+  if (!docKey) return null;
+
+  const rows = getRaw();
+  const actuacionesExistentes = getActuacionesByDocumento(doc);
+  if (!actuacionesExistentes.length) return null;
+
+  const referencia =
+    rows[actuacionesExistentes[actuacionesExistentes.length - 1].rowIndex] || actuacionesExistentes[0].registro;
+
+  const incoming = payload && typeof payload === 'object' ? payload : {};
+  const safe = incoming.data && typeof incoming.data === 'object' ? { ...incoming.data } : { ...incoming };
+
+  // La fila nueva solo conserva Bloques 1-2; Bloque 3+ queda limpio por defecto.
+  const nuevaFila = {};
+  (headers || []).forEach((headerKey, index) => {
+    const rawHeader = rawHeaders[index] || headerKey;
+    nuevaFila[headerKey] = isBaseFieldForNuevaActuacion(rawHeader) ? referencia?.[headerKey] ?? '' : '';
+  });
+
+  Object.keys(safe).forEach((fieldName) => {
+    const headerKey = getHeaderKey(fieldName);
+    if (!headerKey) return;
+    const rawHeader = getRawHeaderByKey(headerKey);
+    if (!isBaseFieldForNuevaActuacion(rawHeader) && !isBaseFieldForNuevaActuacion(headerKey)) return;
+    nuevaFila[headerKey] = safe[fieldName] == null ? '' : safe[fieldName];
+  });
+
+  nuevaFila[docKey] = doc;
+
+  rows.push(nuevaFila);
+  saveRaw(rows);
+
+  const rowIndex = rows.length - 1;
+  return {
+    id: buildActuacionId(doc, rowIndex),
+    rowIndex,
+    registro: nuevaFila,
+  };
+}
+
 function updateByDocumento(documento, patch) {
   const doc = String(documento ?? '').trim();
   if (!doc) return null;
@@ -200,10 +332,22 @@ function updateByDocumento(documento, patch) {
   if (!docKey) return null;
 
   const rows = getRaw();
-  const idx = rows.findIndex((r) => String(r?.[docKey] ?? '').trim() === doc);
+  const incoming = patch && typeof patch === 'object' ? patch : {};
+
+  const explicitRowIndex =
+    Number.isInteger(incoming?.rowIndex) && incoming.rowIndex >= 0 ? Number(incoming.rowIndex) : null;
+  const parsedActuacionRowIndex = parseRowIndexFromActuacionId(incoming?.actuacionId);
+
+  let idx = -1;
+  if (explicitRowIndex != null && String(rows?.[explicitRowIndex]?.[docKey] ?? '').trim() === doc) {
+    idx = explicitRowIndex;
+  } else if (parsedActuacionRowIndex != null && String(rows?.[parsedActuacionRowIndex]?.[docKey] ?? '').trim() === doc) {
+    idx = parsedActuacionRowIndex;
+  } else {
+    idx = rows.findIndex((r) => String(r?.[docKey] ?? '').trim() === doc);
+  }
   if (idx < 0) return null;
 
-  const incoming = patch && typeof patch === 'object' ? patch : {};
   const safe = incoming.data && typeof incoming.data === 'object' ? { ...incoming.data } : { ...incoming };
 
   ensureColumn('Estado del caso', '');
@@ -222,6 +366,8 @@ function updateByDocumento(documento, patch) {
   delete safe.tipo;
   delete safe.tipoPpl;
   delete safe.data;
+  delete safe.rowIndex;
+  delete safe.actuacionId;
 
   const row = rows[idx];
   Object.keys(safe).forEach((k) => {
@@ -311,6 +457,8 @@ module.exports = {
   getAll,
   getColumns,
   getByDocumento,
+  getActuacionesByDocumento,
+  createActuacionByDocumento,
   updateByDocumento,
   assignDefensor,
   getDefensoresDistinct,

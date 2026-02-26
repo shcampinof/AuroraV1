@@ -18,7 +18,7 @@ export async function getPplListado(tipo) {
   return res.json(); // { tipo, columns, rows }
 }
 
-// CONSULTA POR CÉDULA (unificada)
+// CONSULTA POR CEDULA (unificada)
 // GET /api/ppl/:documento
 export async function getPplByDocumento(documento) {
   const res = await fetch(`${API_BASE}/ppl/${encodeURIComponent(documento)}`);
@@ -36,6 +36,29 @@ export async function updatePpl(documento, payload) {
   });
   if (!res.ok) throw new Error('Error actualizando registro');
   return res.json(); // { tipo, registro }
+}
+
+// CREATE ACTUACION
+// POST /api/ppl/:documento/actuaciones
+export async function createPplActuacion(documento, payload) {
+  const res = await fetch(`${API_BASE}/ppl/${encodeURIComponent(documento)}/actuaciones`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) throw new Error('Error creando actuacion');
+  return res.json(); // { documento, actuacion, registro }
+}
+
+// HISTORIAL DE ACTUACIONES
+// GET /api/ppl/:documento/actuaciones
+export async function getPplActuacionesByDocumento(documento) {
+  const doc = String(documento ?? '').trim();
+  if (!doc) return { documento: '', actuaciones: [] };
+
+  const res = await fetch(`${API_BASE}/ppl/${encodeURIComponent(doc)}/actuaciones`);
+  if (!res.ok) throw new Error('Error consultando historial de actuaciones');
+  return res.json(); // { documento, actuaciones }
 }
 
 // =====================
@@ -71,46 +94,3 @@ export async function getDefensoresCondenados() {
   if (!res.ok) throw new Error('Error consultando defensores');
   return res.json(); // { defensores }
 }
-
-function normalizeDocValue(value) {
-  return String(value ?? '')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .toLowerCase();
-}
-
-function readDocumentoFromRegistro(registro) {
-  const source = registro && typeof registro === 'object' ? registro : {};
-  return String(
-    source.numeroIdentificacion ??
-      source['Número de identificación'] ??
-      source['Numero de identificacion'] ??
-      source.documento ??
-      source.cedula ??
-      source.Title ??
-      source.title ??
-      ''
-  ).trim();
-}
-
-export async function getPplActuacionesByDocumento(documento) {
-  const doc = String(documento ?? '').trim();
-  if (!doc) return { documento: '', actuaciones: [] };
-
-  const listing = await getPplListado();
-  const rows = Array.isArray(listing?.rows) ? listing.rows : [];
-  const docNeedle = normalizeDocValue(doc);
-
-  const actuaciones = rows
-    .map((row, rowIndex) => ({ row, rowIndex }))
-    .filter(({ row }) => normalizeDocValue(readDocumentoFromRegistro(row)) === docNeedle)
-    .map(({ row, rowIndex }) => ({
-      id: `${docNeedle}-${rowIndex}`,
-      rowIndex,
-      registro: row,
-    }));
-
-  return { documento: doc, actuaciones };
-}
-
-

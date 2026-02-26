@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { getPplActuacionesByDocumento } from '../services/api.js';
 import { evaluateAuroraRules } from '../utils/evaluateAuroraRules.ts';
 import { reportError } from '../utils/reportError.js';
+import { getLabelAccionCaso } from '../utils/actuacionesLabels.js';
+import './HistorialActuacionesPPL.css';
 
 function decodeUnicodeEscapes(text) {
   return String(text ?? '')
@@ -61,7 +63,7 @@ function cp1252CharsToBytes(input) {
 function maybeDecodeUtf8Mojibake(text) {
   let out = String(text ?? '');
   for (let pass = 0; pass < 3; pass += 1) {
-    if (!/[ÃÂâ]/.test(out)) break;
+    if (!/[ÃƒÃ‚Ã¢]/.test(out)) break;
     try {
       const bytes = cp1252CharsToBytes(out);
       if (!bytes) break;
@@ -79,15 +81,15 @@ function displayText(value) {
   let out = decodeUnicodeEscapes(String(value ?? ''));
   out = maybeDecodeUtf8Mojibake(out);
   out = out
-    .replace(/\best\?/gi, 'está')
-    .replace(/\bavanzar\?/gi, 'avanzará')
+    .replace(/\best\?/gi, 'est\u00e1')
+    .replace(/\bavanzar\?/gi, 'avanzar\u00e1')
     .replace(/\bdemostar\b/gi, 'demostrar')
-    .replace(/\?ltima/gi, 'última');
+    .replace(/\?ltima/gi, '\u00faltima');
   return out;
 }
 
 function normalizeText(value) {
-  return String(value ?? '')
+  return maybeDecodeUtf8Mojibake(decodeUnicodeEscapes(String(value ?? '')))
     .trim()
     .replace(/\s+/g, ' ')
     .normalize('NFD')
@@ -116,13 +118,40 @@ function readFirstField(source, aliases) {
   return '';
 }
 
+function isEmptyHistorialValue(value) {
+  const text = String(value ?? '').trim();
+  return text === '' || text === '-' || text === '\u2014';
+}
+
+const CAMPOS_CLAVE_PARA_INICIAR_ACTUALIZAR = new Set([
+  'fecha de analisis juridico del caso',
+  'resumen del analisis del caso',
+  'resumen del analisis juridico del presente caso',
+  'actuacion a adelantar',
+  'procedencia de la solicitud de vencimiento de terminos',
+  'fecha de entrevista',
+  'fecha de presentacion de solicitud a la autoridad',
+  'sentido de la decision',
+  'sentido de la decision que resuelve la solicitud',
+  'sentido de la decision que resuelve recurso',
+]);
+
+function normalizeBloqueField(value) {
+  return normalizeText(value)
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function hasCamposClaveDiligenciados(registro) {
+  const source = registro && typeof registro === 'object' ? registro : {};
+  return Object.entries(source).some(([fieldName, fieldValue]) => {
+    if (!CAMPOS_CLAVE_PARA_INICIAR_ACTUALIZAR.has(normalizeBloqueField(fieldName))) return false;
+    return !isEmptyHistorialValue(fieldValue);
+  });
+}
+
 function normalizeEstado(value) {
-  return String(value ?? '')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
+  return normalizeText(value);
 }
 
 function getEstadoClass(estado) {
@@ -262,14 +291,60 @@ function getEstadoDisplayInfo(data, createdAtFallback) {
   };
 }
 
+function resolveTipoPpl(registro) {
+  const source = registro && typeof registro === 'object' ? registro : {};
+  const situacion = firstFilledValue(
+    readFirstField(source, [
+      'Situaci\u00f3n Jur\u00eddica actualizada (de conformidad con la rama judicial)',
+      'Situacion Juridica actualizada (de conformidad con la rama judicial)',
+      'Situaci\u00f3n Jur\u00eddica',
+      'Situacion Juridica',
+    ])
+  );
+
+  const key = normalizeText(situacion);
+  if (key.includes('condenad')) return 'condenado';
+  if (key.includes('sindicad')) return 'sindicado';
+  return '';
+}
+
+function getActuacionJudicialDisplay(registro) {
+  const source = registro && typeof registro === 'object' ? registro : {};
+  const auroraP40 = firstFilledValue(
+    readFirstField(source, [
+      'Actuaci\u00f3n a adelantar',
+      'Actuacion a adelantar',
+      'Acci\u00f3n a realizar',
+      'Accion a realizar',
+      'posibleActuacionJudicial',
+    ])
+  );
+
+  const celesteP21 = firstFilledValue(
+    readFirstField(source, [
+      'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE T\u00c9RMINOS',
+      'PROCEDENCIA DE LA SOLICITUD DE VENCIMIENTO DE TERMINOS',
+      'Procedencia de la solicitud de vencimiento de t\u00e9rminos',
+      'Procedencia de la solicitud de vencimiento de terminos',
+    ])
+  );
+
+  const tipo = resolveTipoPpl(source);
+  if (tipo === 'condenado') return auroraP40 || celesteP21;
+  if (tipo === 'sindicado') return celesteP21 || auroraP40;
+  return auroraP40 || celesteP21;
+}
+
 export default function HistorialActuacionesPPL({
   registro,
   numeroDocumento,
   onSelectActuacion,
   onCrearNuevaActuacion,
+  onIniciarActuacion,
   refreshToken,
   actuacionActivaId,
   creandoActuacion = false,
+  onActionLabelChange,
 }) {
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
   const [historialError, setHistorialError] = useState('');
@@ -300,10 +375,12 @@ export default function HistorialActuacionesPPL({
           return {
             id: String(item?.id ?? `actuacion-${idx + 1}`),
             registro: rowData,
-            fechaEntrevistaPregunta38: firstFilledValue(
-              rowData?.['Fecha de entrevista'],
-              rowData?.fechaEntrevista,
-              rowData?.['aurora_b4_fechaEntrevista']
+            fechaAnalisisJuridico: firstFilledValue(
+              readFirstField(rowData, [
+                'Fecha de an\u00e1lisis jur\u00eddico del caso',
+                'Fecha de analisis juridico del caso',
+                'aurora_b3_fechaAnalisis',
+              ])
             ),
             resumenAnalisisPregunta37: firstFilledValue(
               rowData?.['Resumen del an\u00e1lisis del caso'],
@@ -311,13 +388,7 @@ export default function HistorialActuacionesPPL({
               rowData?.['RESUMEN DEL AN\u00c1LISIS JUR\u00cdDICO DEL PRESENTE CASO'],
               rowData?.['RESUMEN DEL ANALISIS JURIDICO DEL PRESENTE CASO']
             ),
-            actuacionPregunta40: firstFilledValue(
-              rowData?.['Actuaci\u00f3n a adelantar'],
-              rowData?.['Actuacion a adelantar'],
-              rowData?.['Acci\u00f3n a realizar'],
-              rowData?.['Accion a realizar'],
-              rowData?.posibleActuacionJudicial
-            ),
+            actuacionJudicial: getActuacionJudicialDisplay(rowData),
             estadoLabel: String(estadoInfo?.label || '').trim(),
             estadoClass: String(estadoInfo?.className || '').trim(),
           };
@@ -341,9 +412,7 @@ export default function HistorialActuacionesPPL({
   }, [documentoNormalizado, refreshToken]);
 
   const nombreCompleto = useMemo(() => {
-    return (
-      readFirstField(registro, ['Nombre', 'Nombre usuario', 'nombreUsuario', 'nombre']) || '\u2014'
-    );
+    return readFirstField(registro, ['Nombre', 'Nombre usuario', 'nombreUsuario', 'nombre']) || '\u2014';
   }, [registro]);
 
   const tipoDocumento = useMemo(() => {
@@ -370,6 +439,39 @@ export default function HistorialActuacionesPPL({
     return firstFilledValue(fromRegistro, documentoNormalizado) || '\u2014';
   }, [registro, documentoNormalizado]);
 
+  const tieneActuacionesDiligenciadas = useMemo(
+    () => actuaciones.some((actuacion) => hasCamposClaveDiligenciados(actuacion?.registro)),
+    [actuaciones]
+  );
+
+  const sinActuaciones = useMemo(
+    () => !cargandoHistorial && !historialError && !tieneActuacionesDiligenciadas,
+    [cargandoHistorial, historialError, tieneActuacionesDiligenciadas]
+  );
+
+  const textoAccionCaso = useMemo(() => {
+    const activeId = String(actuacionActivaId || '').trim();
+    if (activeId) {
+      const activa = actuaciones.find((a) => String(a?.id || '').trim() === activeId);
+      if (activa) return getLabelAccionCaso(!hasCamposClaveDiligenciados(activa?.registro));
+    }
+    if (sinActuaciones) return getLabelAccionCaso(true);
+    const hayFilasSinDiligenciar = actuaciones.some((a) => !hasCamposClaveDiligenciados(a?.registro));
+    return getLabelAccionCaso(hayFilasSinDiligenciar);
+  }, [actuacionActivaId, actuaciones, sinActuaciones]);
+
+  useEffect(() => {
+    onActionLabelChange?.(textoAccionCaso);
+  }, [onActionLabelChange, textoAccionCaso]);
+
+  function handleIniciarDesdeFilaVacia() {
+    if (onIniciarActuacion) {
+      onIniciarActuacion();
+      return;
+    }
+    onCrearNuevaActuacion?.();
+  }
+
   return (
     <section className="historial-actuaciones">
       <div className="ppl-summary-card">
@@ -388,55 +490,86 @@ export default function HistorialActuacionesPPL({
       {cargandoHistorial && <p className="hint-text">{displayText('Cargando historial de actuaciones...')}</p>}
       {!cargandoHistorial && historialError && <p className="hint-text">{displayText(historialError)}</p>}
 
-      {!cargandoHistorial && !historialError && actuaciones.length === 0 && (
-        <p className="hint-text">{displayText('Esta persona no tiene actuaciones registradas.')}</p>
+      {!cargandoHistorial && !historialError && sinActuaciones && (
+        <p className="hint-text">{displayText('Sin actuaciones por el momento')}</p>
       )}
 
-      {!cargandoHistorial && !historialError && actuaciones.length > 0 && (
-        <div className="table-container historial-actuaciones-table-container">
-          <table className="data-table historial-actuaciones-table">
+      {!cargandoHistorial && !historialError && (
+        <div className="table-container historial-actuaciones-table-container tabla-historial-actuaciones-wrap">
+          <table className="data-table historial-actuaciones-table tabla-historial-actuaciones">
+            <colgroup>
+              <col className="historial-col-numero" />
+              <col className="historial-col-fecha" />
+              <col className="historial-col-resumen" />
+              <col className="historial-col-actuacion" />
+              <col className="historial-col-accion" />
+              <col className="historial-col-botones" />
+            </colgroup>
             <thead>
               <tr>
-                <th>{displayText('Fecha de análisis jurídico del caso')}</th>
-                <th>{displayText('Resumen del análisis del caso')}</th>
-                <th>{displayText('Actuación judicial a adelantar')}</th>
-                <th>{displayText('Acción a impulsar')}</th>
+                <th className="historial-head-numero">{displayText('N\u00famero de actuaci\u00f3n')}</th>
+                <th>{displayText('Fecha de an\u00e1lisis jur\u00eddico del caso')}</th>
+                <th>{displayText('Resumen del an\u00e1lisis del caso')}</th>
+                <th>{displayText('Actuaci\u00f3n judicial a adelantar')}</th>
+                <th>{displayText('Acci\u00f3n a impulsar')}</th>
                 <th>{displayText('Acciones')}</th>
               </tr>
             </thead>
             <tbody>
-              {actuaciones.map((actuacion) => {
-                const isActive =
-                  String(actuacionActivaId || '').trim() &&
-                  String(actuacion?.id || '').trim() === String(actuacionActivaId || '').trim();
-                return (
-                  <tr key={String(actuacion?.id || '')} className={isActive ? 'historial-row-active' : ''}>
-                    <td>{displayText(firstFilledValue(actuacion?.fechaEntrevistaPregunta38) || '\u2014')}</td>
-                    <td>{displayText(firstFilledValue(actuacion?.resumenAnalisisPregunta37) || '\u2014')}</td>
-                    <td>{displayText(firstFilledValue(actuacion?.actuacionPregunta40) || '\u2014')}</td>
-                    <td>
-                      {actuacion?.estadoLabel ? (
-                        actuacion?.estadoClass ? (
-                          <span className={`estadoBadge ${actuacion.estadoClass}`}>{displayText(actuacion.estadoLabel)}</span>
+              {!sinActuaciones &&
+                actuaciones.map((actuacion, index) => {
+                  const isActive =
+                    String(actuacionActivaId || '').trim() &&
+                    String(actuacion?.id || '').trim() === String(actuacionActivaId || '').trim();
+                  const textoAccionFila = getLabelAccionCaso(!hasCamposClaveDiligenciados(actuacion?.registro));
+
+                  return (
+                    <tr key={String(actuacion?.id || '')} className={isActive ? 'historial-row-active' : ''}>
+                      <td className="historial-col-numero-cell">{index + 1}</td>
+                      <td>{displayText(firstFilledValue(actuacion?.fechaAnalisisJuridico) || '\u2014')}</td>
+                      <td>{displayText(firstFilledValue(actuacion?.resumenAnalisisPregunta37) || '\u2014')}</td>
+                      <td>{displayText(firstFilledValue(actuacion?.actuacionJudicial) || '\u2014')}</td>
+                      <td>
+                        {actuacion?.estadoLabel ? (
+                          actuacion?.estadoClass ? (
+                            <span className={`estadoBadge ${actuacion.estadoClass}`}>{displayText(actuacion.estadoLabel)}</span>
+                          ) : (
+                            displayText(actuacion.estadoLabel)
+                          )
                         ) : (
-                          displayText(actuacion.estadoLabel)
-                        )
-                      ) : (
-                        '\u2014'
-                      )}
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="primary-button historial-action-button"
-                        onClick={() => onSelectActuacion?.(actuacion)}
-                      >
-                        {displayText('Actualizar caso')}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+                          '\u2014'
+                        )}
+                      </td>
+                      <td className="historial-col-acciones-cell">
+                        <button
+                          type="button"
+                          className="primary-button historial-action-button"
+                          onClick={() => onSelectActuacion?.(actuacion)}
+                        >
+                          {displayText(textoAccionFila)}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+              {sinActuaciones && (
+                <tr className="historial-empty-row">
+                  <td className="historial-col-numero-cell">-</td>
+                  <td colSpan={4} className="historial-empty-message">
+                    {displayText('Sin actuaciones por el momento')}
+                  </td>
+                  <td className="historial-col-acciones-cell">
+                    <button
+                      type="button"
+                      className="primary-button historial-action-button"
+                      onClick={handleIniciarDesdeFilaVacia}
+                    >
+                      {displayText(textoAccionCaso)}
+                    </button>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -449,7 +582,7 @@ export default function HistorialActuacionesPPL({
           onClick={onCrearNuevaActuacion}
           disabled={creandoActuacion || !documentoNormalizado}
         >
-          {creandoActuacion ? displayText('Creando...') : displayText('Crear nueva actuación')}
+          {creandoActuacion ? displayText('Creando...') : displayText('Crear nueva actuaci\u00f3n')}
         </button>
       </div>
     </section>

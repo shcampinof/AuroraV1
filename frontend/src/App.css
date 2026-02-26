@@ -1238,6 +1238,10 @@ input[list]{
   gap: 0.5rem;
 }
 
+.progress-wrap--q23{
+  margin-top: 0.35rem;
+}
+
 .progress-label{
   text-align:center;
   font-weight: 900;
