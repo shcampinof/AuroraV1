@@ -300,6 +300,17 @@ export default function HistorialActuacionesPPL({
           return {
             id: String(item?.id ?? `actuacion-${idx + 1}`),
             registro: rowData,
+            fechaEntrevistaPregunta38: firstFilledValue(
+              rowData?.['Fecha de entrevista'],
+              rowData?.fechaEntrevista,
+              rowData?.['aurora_b4_fechaEntrevista']
+            ),
+            resumenAnalisisPregunta37: firstFilledValue(
+              rowData?.['Resumen del an\u00e1lisis del caso'],
+              rowData?.['Resumen del analisis del caso'],
+              rowData?.['RESUMEN DEL AN\u00c1LISIS JUR\u00cdDICO DEL PRESENTE CASO'],
+              rowData?.['RESUMEN DEL ANALISIS JURIDICO DEL PRESENTE CASO']
+            ),
             actuacionPregunta40: firstFilledValue(
               rowData?.['Actuaci\u00f3n a adelantar'],
               rowData?.['Actuacion a adelantar'],
@@ -309,12 +320,6 @@ export default function HistorialActuacionesPPL({
             ),
             estadoLabel: String(estadoInfo?.label || '').trim(),
             estadoClass: String(estadoInfo?.className || '').trim(),
-            numeroProceso: firstFilledValue(
-              rowData?.['N\u00famero de proceso'],
-              rowData?.['Numero de proceso'],
-              rowData?.numeroProceso,
-              rowData?.proceso
-            ),
           };
         });
         setActuaciones(normalizedRows);
@@ -378,16 +383,6 @@ export default function HistorialActuacionesPPL({
 
       <div className="historial-actuaciones-header">
         <h3 className="block-title historial-actuaciones-title">{displayText('Historial de actuaciones')}</h3>
-        <div className="historial-actions-wrap">
-          <button
-            className="primary-button historial-create-button"
-            type="button"
-            onClick={onCrearNuevaActuacion}
-            disabled={creandoActuacion || !documentoNormalizado}
-          >
-            {creandoActuacion ? displayText('Creando...') : displayText('Crear nueva actuación')}
-          </button>
-        </div>
       </div>
 
       {cargandoHistorial && <p className="hint-text">{displayText('Cargando historial de actuaciones...')}</p>}
@@ -402,9 +397,10 @@ export default function HistorialActuacionesPPL({
           <table className="data-table historial-actuaciones-table">
             <thead>
               <tr>
-                <th>{displayText('Actuación a adelantar')}</th>
-                <th>{displayText('Acción a impulsar / Estado')}</th>
-                <th>{displayText('Número de proceso')}</th>
+                <th>{displayText('Fecha de análisis jurídico del caso')}</th>
+                <th>{displayText('Resumen del análisis del caso')}</th>
+                <th>{displayText('Actuación judicial a adelantar')}</th>
+                <th>{displayText('Acción a impulsar')}</th>
                 <th>{displayText('Acciones')}</th>
               </tr>
             </thead>
@@ -415,6 +411,8 @@ export default function HistorialActuacionesPPL({
                   String(actuacion?.id || '').trim() === String(actuacionActivaId || '').trim();
                 return (
                   <tr key={String(actuacion?.id || '')} className={isActive ? 'historial-row-active' : ''}>
+                    <td>{displayText(firstFilledValue(actuacion?.fechaEntrevistaPregunta38) || '\u2014')}</td>
+                    <td>{displayText(firstFilledValue(actuacion?.resumenAnalisisPregunta37) || '\u2014')}</td>
                     <td>{displayText(firstFilledValue(actuacion?.actuacionPregunta40) || '\u2014')}</td>
                     <td>
                       {actuacion?.estadoLabel ? (
@@ -427,14 +425,13 @@ export default function HistorialActuacionesPPL({
                         '\u2014'
                       )}
                     </td>
-                    <td>{displayText(firstFilledValue(actuacion?.numeroProceso) || '\u2014')}</td>
                     <td>
                       <button
                         type="button"
                         className="primary-button historial-action-button"
                         onClick={() => onSelectActuacion?.(actuacion)}
                       >
-                        {displayText('Ver caso')}
+                        {displayText('Actualizar caso')}
                       </button>
                     </td>
                   </tr>
@@ -444,6 +441,17 @@ export default function HistorialActuacionesPPL({
           </table>
         </div>
       )}
+
+      <div className="historial-create-button-wrap">
+        <button
+          className="save-button historial-create-button"
+          type="button"
+          onClick={onCrearNuevaActuacion}
+          disabled={creandoActuacion || !documentoNormalizado}
+        >
+          {creandoActuacion ? displayText('Creando...') : displayText('Crear nueva actuación')}
+        </button>
+      </div>
     </section>
   );
 }

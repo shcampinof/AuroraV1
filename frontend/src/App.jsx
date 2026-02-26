@@ -5,7 +5,7 @@ import Sidebar from './components/Sidebar.jsx';
 
 import Home from './pages/Home.jsx';
 import RegistrosAsignados from './pages/RegistrosAsignados.jsx';
-import FormularioEntrevista from './pages/FormularioEntrevista.jsx';
+import FormularioAtencion from './pages/FormularioAtencion.jsx';
 import AsignacionDefensores from './pages/AsignacionDefensores.jsx';
 import CajaHerramientas from './pages/CajaHerramientas.jsx';
 import ManualInteractivo from './pages/ManualInteractivo.jsx';
@@ -77,7 +77,7 @@ function App() {
   }
 
   if (vistaActual === 'formulario') {
-    contenido = <FormularioEntrevista numeroInicial={numeroSeleccionado} />;
+    contenido = <FormularioAtencion numeroInicial={numeroSeleccionado} />;
   }
 
   if (vistaActual === 'registros') {

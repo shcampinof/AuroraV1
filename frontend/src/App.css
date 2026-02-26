@@ -13,9 +13,11 @@
   --layout-gap: 20px;
 }
 
-*{
+*,
+*::before,
+*::after{
   box-sizing: border-box;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: "Source Sans Pro", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 html,
@@ -53,9 +55,43 @@ body{
   width: 100%;
   left: 0;
   right: 0;
-  padding: 1.3rem 2rem;
-  text-align: center;
+  padding: 0.75rem 2rem;
   box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+.header-inner{
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.9rem;
+  min-width: 0;
+}
+
+.header-logo-circle{
+  width: clamp(62px, 6vw, 84px);
+  height: clamp(62px, 6vw, 84px);
+  border-radius: 14px;
+  background-color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.header-logo{
+  width: 92%;
+  height: 92%;
+  object-fit: contain;
+}
+
+.header-text{
+  min-width: 0;
+  text-align: center;
+}
+
+.header-spacer{
+  width: clamp(62px, 6vw, 84px);
+  height: 1px;
 }
 
 .header-title{
@@ -63,6 +99,7 @@ body{
   font-size: 2.2rem;
   font-weight: 800;
   letter-spacing: 1px;
+  line-height: 1;
 }
 
 .header-subtitle{
@@ -168,16 +205,20 @@ body{
 /* =========================================================
    HOME
 ========================================================= */
-.home-logo-placeholder{
+.home-hero{
+  position: relative;
   display: flex;
   justify-content: center;
   align-items: center;
-  margin: 2rem 0 1rem;
+  margin: 0.25rem 0 0.5rem;
+  min-height: 185px;
+  padding-top: 0.2rem;
 }
 
-.home-logo{
-  width: min(480px, 100%);
+.home-logo-aurora{
+  width: min(430px, 78%);
   height: auto;
+  object-fit: contain;
 }
 
 .home-title{
@@ -187,11 +228,24 @@ body{
 
 .home-text{
   text-align: center;
-  margin: 0.25rem 0;
+  margin: 0.2rem auto;
+  max-width: 980px;
+}
+
+.home-text-intro{
+  color: #000000;
+}
+
+.home-text-spaced{
+  margin-top: 1rem;
+}
+
+.home-text-secondary{
+  color: #4b5563;
 }
 
 .home-note{
-  margin-top: 1rem;
+  margin-top: 0.85rem;
   color: #6b7280;
 }
 
@@ -219,6 +273,11 @@ body{
   overflow-wrap: anywhere;
   word-break: break-word;
   line-height: 1.3;
+}
+
+.required-note{
+  color: #c1121f;
+  font-weight: 400;
 }
 
 .form-field input,
@@ -496,10 +555,15 @@ input[list]{
   border: 1px solid rgba(255,255,255,0.35);
   border-radius: 8px;
   padding: 0.55rem 0.6rem 0.2rem;
+  align-self: start;
 }
 
 .question-40-highlight label{
   color: #ffffff;
+}
+
+.question-40-highlight .required-note{
+  color: #ffd6dc;
 }
 
 .question-40-highlight .form-field{
@@ -675,7 +739,7 @@ input[list]{
 .historial-actuaciones-header{
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 0.75rem;
   align-items: flex-start;
 }
@@ -696,12 +760,18 @@ input[list]{
   flex: 0 0 auto;
 }
 
+.historial-create-button-wrap{
+  display: flex;
+  justify-content: center;
+  margin-top: 0.35rem;
+}
+
 .historial-actuaciones-table-container{
   max-height: 360px;
 }
 
 .historial-actuaciones-table{
-  min-width: 760px;
+  min-width: 1080px;
   table-layout: fixed;
 }
 
@@ -713,22 +783,27 @@ input[list]{
 
 .historial-actuaciones-table th:nth-child(1),
 .historial-actuaciones-table td:nth-child(1){
-  width: 32%;
+  width: 16%;
 }
 
 .historial-actuaciones-table th:nth-child(2),
 .historial-actuaciones-table td:nth-child(2){
-  width: 28%;
+  width: 29%;
 }
 
 .historial-actuaciones-table th:nth-child(3),
 .historial-actuaciones-table td:nth-child(3){
-  width: 22%;
+  width: 20%;
 }
 
 .historial-actuaciones-table th:nth-child(4),
 .historial-actuaciones-table td:nth-child(4){
-  width: 18%;
+  width: 20%;
+}
+
+.historial-actuaciones-table th:nth-child(5),
+.historial-actuaciones-table td:nth-child(5){
+  width: 15%;
   white-space: nowrap;
 }
 
@@ -1232,7 +1307,20 @@ input[list]{
   }
 
   .header{
-    padding: 1rem;
+    padding: 0.5rem 1rem;
+  }
+
+  .header-inner{
+    gap: 0.7rem;
+  }
+
+  .header-logo-circle{
+    width: 58px;
+    height: 58px;
+  }
+
+  .header-spacer{
+    width: 58px;
   }
 
   .header-title{
@@ -1318,11 +1406,20 @@ input[list]{
   }
 
   .historial-create-button{
-    width: 100%;
+    width: auto;
   }
 
   .historial-actuaciones-table{
-    min-width: 700px;
+    min-width: 980px;
+  }
+
+  .home-hero{
+    min-height: 150px;
+    margin-top: 0.2rem;
+  }
+
+  .home-logo-aurora{
+    width: min(320px, 90%);
   }
 
   /* Asignacion defensores PAG */
@@ -1354,6 +1451,10 @@ input[list]{
 @media (max-width: 420px){
   .card{
     padding: 1rem;
+  }
+
+  .home-logo-aurora{
+    width: min(280px, 92%);
   }
 
   .sidebar{ grid-template-columns: 1fr; }

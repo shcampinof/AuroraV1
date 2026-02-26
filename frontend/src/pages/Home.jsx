@@ -1,24 +1,24 @@
 ﻿function Home() {
   return (
     <div className="card">
-      <div className="home-logo-placeholder">
+      <div className="home-hero">
         <img
           src="/LogoAurora.png"
           alt="Logo AURORA"
-          className="home-logo"
+          className="home-logo-aurora"
         />
       </div>
 
       <h2 className="home-title">Bienvenido</h2>
 
-      <p className="home-text">
-        Aurora es la herramienta institucional para la gestión de atención jurídica de personas privadas de la
-        libertad.
+      <p className="home-text home-text-intro">
+        <strong>Aurora</strong> es la herramienta institucional para la gestión de atención jurídica de personas
+        privadas de la libertad.
       </p>
-      <p className="home-text">Use el menú lateral para navegar dentro del sitio.</p>
-      <p className="home-text home-note">
+      <p className="home-text home-text-spaced home-text-secondary">Use el menú lateral para navegar dentro del sitio.</p>
+      <p className="home-text home-text-spaced home-text-secondary">
         Si presenta algún error o inconveniente en la plataforma, repórtelo al correo{' '}
-        <span className="home-note-email">aurora@defensoria.edu.co</span>.
+        <strong>aurora@defensoria.edu.co</strong>
       </p>
     </div>
   );
