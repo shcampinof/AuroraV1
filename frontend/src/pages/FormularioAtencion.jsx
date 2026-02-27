@@ -508,6 +508,13 @@ function Campo({
   );
   if (type === 'select') {
     const normalizedValue = value === '-' ? '' : value ?? '';
+    const normalizedOptions = (options || OPCIONES_SI_NO).map((opt) => {
+      const optionValue = typeof opt === 'string' ? opt : String(opt?.value ?? '');
+      const optionLabel = typeof opt === 'string' ? opt : String(opt?.label ?? opt?.value ?? '');
+      return { value: optionValue, label: optionLabel };
+    });
+    const selectedLabel = normalizedOptions.find((opt) => opt.value === normalizedValue)?.label ?? '';
+    const selectTitle = selectedLabel ? displayText(selectedLabel) : undefined;
     return (
       <div className={`form-field${isDisabled ? ' is-disabled' : ''}`}>
         {labelNode}
@@ -517,13 +524,18 @@ function Campo({
           onChange={(e) => onChange(name, e.target.value)}
           disabled={isDisabled}
           required={required}
+          title={selectTitle}
         >
           <option value="" disabled hidden />
-          {(options || OPCIONES_SI_NO).map((opt, idx) => {
-            const optionValue = typeof opt === 'string' ? opt : String(opt?.value ?? '');
-            const optionLabel = typeof opt === 'string' ? opt : String(opt?.label ?? opt?.value ?? '');
+          {normalizedOptions.map((opt, idx) => {
+            const optionValue = opt.value;
+            const optionLabel = opt.label;
             return (
-              <option key={`${idx}-${optionValue}`} value={optionValue}>
+              <option
+                key={`${idx}-${optionValue}`}
+                value={optionValue}
+                title={displayText(optionLabel)}
+              >
                 {displayText(optionLabel)}
               </option>
             );

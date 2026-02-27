@@ -4,7 +4,7 @@ Aplicacion web para la gestion de atencion juridica de personas privadas de la l
 
 - Consulta y seguimiento de casos.
 - Formulario de atencion juridica (flujos Aurora/Celeste).
-- Asignacion y reasignacion de defensores.
+- Asignacion, reasignacion y creacion de defensores.
 - Consulta y descarga de formatos de apoyo.
 
 ## 1. Vision general de arquitectura
@@ -78,7 +78,7 @@ Paginas relevantes:
 
 - `FormularioAtencion.jsx`: consulta por documento, edicion, guardado y reglas de avance/cierre.
 - `RegistrosAsignados.jsx`: listado general con filtros y estado derivado.
-- `AsignacionDefensores.jsx`: asignacion/reasignacion de casos.
+- `AsignacionDefensores.jsx`: asignacion/reasignacion de casos y creacion de defensores.
 - `CajaHerramientas.jsx`: listado y descarga de formatos.
 
 ## 4. Backend en detalle
@@ -99,7 +99,7 @@ Comportamiento general:
 Rutas:
 
 - `routes/ppl.js`: listado, consulta por documento y actualizacion de registro.
-- `routes/defensores.js`: consulta de defensores desde CSV o deducidos del consolidado.
+- `routes/defensores.js`: consulta y creacion de defensores, con validaciones y control de duplicados.
 - `routes/formatos.js`: listado mock de formatos y descarga de archivos por id.
 
 ## 5. API (contratos principales)
@@ -141,6 +141,11 @@ http://localhost:4000/api
 
 - `GET /api/defensores?source=condenados`
   - Respuesta: `{ defensores }` deduplicados desde el consolidado de condenados.
+
+- `POST /api/defensores`
+  - Body: `{ nombre: "NOMBRE COMPLETO" }`
+  - Respuesta: `{ defensor }`
+  - Errores: `400` (nombre invalido), `409` (duplicado), `500` (error interno).
 
 ### Formatos
 
@@ -245,6 +250,12 @@ npm run test
 npm run build
 ```
 
+Cobertura de pruebas frontend actual incluye:
+
+- Reglas Aurora (`evaluateAuroraRules.test.ts` y `__tests__/evaluateAuroraRules.aurora.spec.ts`).
+- Reglas Celeste (`evaluateCelesteRules.test.ts`).
+- Estado de actuaciones (`estadoActuaciones.rules.test.ts`).
+
 En backend no hay suite de pruebas automatizadas configurada por defecto.
 
 ## 12. Consideraciones conocidas
@@ -260,3 +271,31 @@ En backend no hay suite de pruebas automatizadas configurada por defecto.
 3. Incorporar auditoria de cambios (quien, que, cuando).
 4. Agregar pruebas backend (unitarias e integracion).
 5. Versionar formalmente el contrato API (OpenAPI/Swagger).
+
+## 14. Documentacion tecnica
+
+La documentacion funcional y tecnica del proyecto esta en `docs/`:
+
+- `docs/01_vision_general.md`
+- `docs/02_flujo_de_datos_y_almacenamiento.md`
+- `docs/03_flujos_del_formulario.md`
+- `docs/04_matriz_de_reglas_aurora_celeste.md`
+- `docs/05_endpoints_api.md`
+- `docs/06_estrategia_de_pruebas.md`
+- `docs/07_estado_actuaciones.md`
+
+## 15. Ajuste responsive de listas desplegables largas (2026-02-27)
+
+Se aplico una mejora global para `select` con opciones largas en el frontend:
+
+- Se elimino el truncamiento forzado (`text-overflow: ellipsis` / `white-space: nowrap`) en `frontend/src/App.css`.
+- Se mantuvo `width: 100%`, `max-width: 100%` y `min-width: 0` para evitar desbordamiento horizontal.
+- Se agrego `title` al valor seleccionado y a cada `option` en:
+  - `frontend/src/pages/FormularioAtencion.jsx`
+  - `frontend/src/pages/RegistrosAsignados.jsx`
+
+Resultado esperado del ajuste:
+
+- Mejor legibilidad de valores largos.
+- Comportamiento consistente en desktop, tablet y movil.
+- Sin cambios en reglas de negocio ni en la logica de formularios.

@@ -104,6 +104,7 @@ function DropdownField({ label, value, onChange, options, searchable = false, li
       label: String(opt ?? ''),
     };
   });
+  const selectedLabel = normalizedOptions.find((opt) => opt.value === String(value ?? ''))?.label ?? '';
 
   return (
     <div className="form-field">
@@ -126,10 +127,14 @@ function DropdownField({ label, value, onChange, options, searchable = false, li
           </datalist>
         </>
       ) : (
-        <select value={value} onChange={(e) => onChange(e.target.value)}>
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          title={selectedLabel || undefined}
+        >
           <option value="">Todos</option>
           {normalizedOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>
+            <option key={opt.value} value={opt.value} title={opt.label}>
               {opt.label}
             </option>
           ))}

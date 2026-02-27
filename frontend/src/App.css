@@ -294,9 +294,15 @@ body{
 }
 
 .form-field select{
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-height: 2.45rem;
+  line-height: 1.3;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.form-field select option,
+.form-field select optgroup{
+  white-space: normal;
 }
 
 /* =========================================================
