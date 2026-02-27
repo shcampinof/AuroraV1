@@ -284,15 +284,6 @@ La documentacion funcional y tecnica del proyecto esta en `docs/`:
 - `docs/06_estrategia_de_pruebas.md`
 - `docs/07_estado_actuaciones.md`
 
-## 15. Ajuste responsive de listas desplegables largas (2026-02-27)
-
-Se aplico una mejora global para `select` con opciones largas en el frontend:
-
-- Se elimino el truncamiento forzado (`text-overflow: ellipsis` / `white-space: nowrap`) en `frontend/src/App.css`.
-- Se mantuvo `width: 100%`, `max-width: 100%` y `min-width: 0` para evitar desbordamiento horizontal.
-- Se agrego `title` al valor seleccionado y a cada `option` en:
-  - `frontend/src/pages/FormularioAtencion.jsx`
-  - `frontend/src/pages/RegistrosAsignados.jsx`
 
 Resultado esperado del ajuste:
 
