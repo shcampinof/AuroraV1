@@ -94,3 +94,18 @@ export async function getDefensoresCondenados() {
   if (!res.ok) throw new Error('Error consultando defensores');
   return res.json(); // { defensores }
 }
+
+export async function createDefensor(nombre) {
+  const res = await fetch(`${API_BASE}/defensores`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nombre }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const message = String(data?.error || 'Error guardando defensor.');
+    throw new Error(message);
+  }
+  return data; // { defensor }
+}

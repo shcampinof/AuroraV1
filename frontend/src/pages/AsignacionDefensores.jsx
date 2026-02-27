@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  createDefensor,
   getCondenados,
   getDefensores,
   getDefensoresCondenados,
@@ -24,8 +25,19 @@ function norm(s) {
     .toLowerCase();
 }
 
+function normalizeDefensorNombre(value) {
+  return String(value ?? '')
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isNombreDefensorValido(value) {
+  return /^[\p{L}\s]+$/u.test(value);
+}
+
 function AsignacionDefensores() {
-  const [tab, setTab] = useState('asignacion'); // 'asignacion' | 'reasignacion'
+  const [tab, setTab] = useState('asignacion'); // 'asignacion' | 'reasignacion' | 'crearDefensor'
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState('');
   const [toastOpen, setToastOpen] = useState(false);
@@ -35,6 +47,10 @@ function AsignacionDefensores() {
 
   const [defensores, setDefensores] = useState([]);
   const [nuevoDefensor, setNuevoDefensor] = useState('');
+  const [crearDefensorNombre, setCrearDefensorNombre] = useState('');
+  const [crearDefensorError, setCrearDefensorError] = useState('');
+  const [crearDefensorSuccess, setCrearDefensorSuccess] = useState('');
+  const [guardandoDefensor, setGuardandoDefensor] = useState(false);
 
   const [fDocumento, setFDocumento] = useState('');
   const [fDepartamento, setFDepartamento] = useState('');
@@ -128,7 +144,8 @@ function AsignacionDefensores() {
 
   const rowsTab = useMemo(() => {
     if (tab === 'asignacion') return rows.filter((r) => !tieneDefensor(r?.defensorAsignado));
-    return rows.filter((r) => tieneDefensor(r?.defensorAsignado));
+    if (tab === 'reasignacion') return rows.filter((r) => tieneDefensor(r?.defensorAsignado));
+    return [];
   }, [rows, tab]);
 
   const rowsFiltradas = useMemo(() => {
@@ -293,6 +310,70 @@ function AsignacionDefensores() {
     }
   }
 
+  async function guardarNuevoDefensor() {
+    const nombre = normalizeDefensorNombre(crearDefensorNombre);
+    setCrearDefensorSuccess('');
+
+    if (!nombre) {
+      setCrearDefensorError('El nombre del defensor es obligatorio.');
+      return;
+    }
+    if (!isNombreDefensorValido(nombre)) {
+      setCrearDefensorError('El nombre solo puede contener letras y espacios.');
+      return;
+    }
+
+    const existe = defensores.some((d) => normalizeDefensorNombre(d) === nombre);
+    if (existe) {
+      setCrearDefensorError('El defensor ya existe.');
+      return;
+    }
+
+    setGuardandoDefensor(true);
+    setCrearDefensorError('');
+    try {
+      const data = await createDefensor(nombre);
+      const creado = normalizeDefensorNombre(data?.defensor || nombre);
+
+      setDefensores((prev) => {
+        const map = new Map();
+        [...prev, creado].forEach((item) => {
+          const normalized = normalizeDefensorNombre(item);
+          if (!normalized) return;
+          if (!map.has(normalized)) map.set(normalized, normalized);
+        });
+        return Array.from(map.values());
+      });
+
+      setNuevoDefensor(creado);
+      setCrearDefensorNombre('');
+      setCrearDefensorSuccess('Defensor creado correctamente');
+      await cargarDefensoresActuales();
+    } catch (e) {
+      reportError(e, 'asignacion-defensores:crear-defensor');
+      setCrearDefensorError(String(e?.message || 'Error guardando defensor.'));
+    } finally {
+      setGuardandoDefensor(false);
+    }
+  }
+
+  function cambiarTab(nextTab) {
+    setTab(nextTab);
+    setSeleccionados(new Set());
+    setError('');
+    setToastOpen(false);
+    setCrearDefensorError('');
+    setCrearDefensorSuccess('');
+
+    if (nextTab === 'asignacion') {
+      setFDefensorActual('');
+      setFiltrosAplicados((prev) => ({ ...(prev || {}), defensorActual: '' }));
+    }
+  }
+
+  const botonGuardarDefensorDeshabilitado =
+    guardandoDefensor || String(crearDefensorNombre || '').trim() === '';
+
   return (
     <div className="card">
       <h2>PAG - Asignación de Casos</h2>
@@ -303,23 +384,18 @@ function AsignacionDefensores() {
         onClose={() => setToastOpen(false)}
       />
 
-      {error && <p className="hint-text">{error}</p>}
-      {cargando && <p>Cargando...</p>}
-      {sugerenciaReasignacion && <p className="hint-text">{sugerenciaReasignacion}</p>}
+      {tab !== 'crearDefensor' && error && <p className="hint-text">{error}</p>}
+      {tab !== 'crearDefensor' && cargando && <p>Cargando...</p>}
+      {tab !== 'crearDefensor' && sugerenciaReasignacion && (
+        <p className="hint-text">{sugerenciaReasignacion}</p>
+      )}
 
       <div className="search-row" style={{ marginTop: '0.75rem' }}>
         <button
           className={`primary-button aurora-tab ${tab === 'asignacion' ? 'active' : ''}`}
           type="button"
           aria-pressed={tab === 'asignacion'}
-          onClick={() => {
-            setTab('asignacion');
-            setSeleccionados(new Set());
-            setError('');
-            setToastOpen(false);
-            setFDefensorActual('');
-            setFiltrosAplicados((prev) => ({ ...(prev || {}), defensorActual: '' }));
-          }}
+          onClick={() => cambiarTab('asignacion')}
         >
           Asignación
         </button>
@@ -327,17 +403,62 @@ function AsignacionDefensores() {
           className={`primary-button aurora-tab ${tab === 'reasignacion' ? 'active' : ''}`}
           type="button"
           aria-pressed={tab === 'reasignacion'}
-          onClick={() => {
-            setTab('reasignacion');
-            setSeleccionados(new Set());
-            setError('');
-            setToastOpen(false);
-          }}
+          onClick={() => cambiarTab('reasignacion')}
         >
           Reasignación
         </button>
+        <button
+          className={`primary-button aurora-tab ${tab === 'crearDefensor' ? 'active' : ''}`}
+          type="button"
+          aria-pressed={tab === 'crearDefensor'}
+          onClick={() => cambiarTab('crearDefensor')}
+        >
+          Crear defensor
+        </button>
       </div>
 
+      {tab === 'crearDefensor' ? (
+        <div className="card" style={{ marginTop: '1rem' }}>
+          <h3 className="block-title">Crear defensor</h3>
+          <div className="grid-2">
+            <div className="form-field">
+              <label>Nombre completo del defensor</label>
+              <input
+                className="input-text"
+                placeholder="Ingrese nombre completo en MAYÚSCULA"
+                value={crearDefensorNombre}
+                onChange={(e) => {
+                  setCrearDefensorNombre(String(e.target.value || '').toUpperCase());
+                  if (crearDefensorError) setCrearDefensorError('');
+                  if (crearDefensorSuccess) setCrearDefensorSuccess('');
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    guardarNuevoDefensor();
+                  }
+                }}
+              />
+              <p className="hint-text">El nombre debe ingresarse completo y en MAYÚSCULA.</p>
+              {crearDefensorError && <p className="hint-text">{crearDefensorError}</p>}
+              {crearDefensorSuccess && <p className="hint-text">{crearDefensorSuccess}</p>}
+              {guardandoDefensor && <p className="hint-text">Guardando defensor...</p>}
+            </div>
+            <div />
+          </div>
+          <div className="actions-center">
+            <button
+              className="save-button"
+              type="button"
+              onClick={guardarNuevoDefensor}
+              disabled={botonGuardarDefensorDeshabilitado}
+            >
+              Guardar defensor
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
       <div className="filter-panel" style={{ marginTop: '1rem' }}>
         <h3 className="filter-title">Filtros</h3>
 
@@ -551,6 +672,8 @@ function AsignacionDefensores() {
           </div>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

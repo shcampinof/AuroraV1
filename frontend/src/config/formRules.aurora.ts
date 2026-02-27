@@ -212,6 +212,10 @@ function decisionUsuarioPermiteContinuar(value: unknown): boolean {
   return normalize(value).startsWith('si');
 }
 
+function isNoConcedeSubrogadoPenal(value: unknown): boolean {
+  return equalsInsensitive(value, 'No concede subrogado penal');
+}
+
 function isFormularioBloqueado(record: FormRecord): boolean {
   return lockRules.some((r) => r.when(record));
 }
@@ -366,6 +370,7 @@ export const lockRules: LockRule[] = [
 ];
 
 export const dependencyRules: DependencyRule[] = [
+  // Regla: AURORA.B5A.DEPENDENCIA.1
   {
     id: 'dep_q46_no_deshabilita_47_48',
     source: { key: FIELD.q46, label: '46 Se requiere misión de trabajo' },
@@ -375,6 +380,7 @@ export const dependencyRules: DependencyRule[] = [
       disable: [FIELD.q47, FIELD.q48],
     },
   },
+  // Regla: AURORA.B5A.DEPENDENCIA.3
   {
     id: 'dep_q52_no_niega_utilidad_publica',
     source: { key: FIELD.q52, label: '52 Sentido de la decisión' },
@@ -385,6 +391,7 @@ export const dependencyRules: DependencyRule[] = [
       disable: [FIELD.q53, FIELD.q54, FIELD.q55, FIELD.q56],
     },
   },
+  // Regla: AURORA.B5A.DEPENDENCIA.2
   {
     id: 'dep_q52_niega_utilidad_publica_habilita_53_54',
     source: { key: FIELD.q52, label: '52 Sentido de la decisión' },
@@ -394,6 +401,7 @@ export const dependencyRules: DependencyRule[] = [
       enable: [FIELD.q53, FIELD.q54],
     },
   },
+  // Regla: AURORA.B5A.DEPENDENCIA.4
   {
     id: 'dep_q54_si_habilita_55_56_en_5a',
     source: { key: FIELD.q54, label: '54 Se presenta recurso' },
@@ -406,20 +414,49 @@ export const dependencyRules: DependencyRule[] = [
       enable: [FIELD.q55, FIELD.q56],
     },
   },
+  // Regla: AURORA.B5B.DEPENDENCIA.3
+  // TODO(matriz): confirmar nomenclatura Q47/Q52 para el campo "Sentido de la decision" en 5B.
+  {
+    id: 'dep_q52_no_concede_subrogado_habilita_q53_q54_en_5b',
+    source: { key: FIELD.q52, label: '47 Sentido de la decisiÃ³n' },
+    description: 'En 5B, si Q47 = No concede subrogado penal, habilita motivo y recurso.',
+    when: (record) => !isUtilidadPublicaFlow(record) && isNoConcedeSubrogadoPenal(get(record, FIELD.q52)),
+    effects: {
+      enable: [FIELD.q53, FIELD.q54],
+    },
+  },
+  // Regla: AURORA.B5B.DEPENDENCIA.4
+  {
+    id: 'dep_q52_no_concede_subrogado_deshabilita_q53_q54_q55_en_5b',
+    source: { key: FIELD.q52, label: '47 Sentido de la decisiÃ³n' },
+    description: 'En 5B, si Q47 != No concede subrogado penal, deshabilita motivo y campos de recurso.',
+    when: (record) => !isUtilidadPublicaFlow(record) && !isNoConcedeSubrogadoPenal(get(record, FIELD.q52)),
+    effects: {
+      disable: [FIELD.q53, FIELD.q54, FIELD.q55, FIELD.b5NormalSentidoResuelveSolicitud],
+    },
+  },
+  // Regla: AURORA.B5B.DEPENDENCIA.1
   {
     id: 'dep_q49_no_deshabilita_q50_q51_en_5b',
     source: { key: FIELD.q54, label: '49 Se presenta recurso' },
     description: 'En 5B, si Q49 != Sí, deshabilita Q50 y Q51.',
-    when: (record) => !isUtilidadPublicaFlow(record) && !equalsAnyInsensitive(get(record, FIELD.q54), ['Sí', 'S?']),
+    when: (record) =>
+      !isUtilidadPublicaFlow(record) &&
+      isNoConcedeSubrogadoPenal(get(record, FIELD.q52)) &&
+      !equalsAnyInsensitive(get(record, FIELD.q54), ['Sí', 'S?']),
     effects: {
       disable: [FIELD.q55, FIELD.b5NormalSentidoResuelveSolicitud],
     },
   },
+  // Regla: AURORA.B5B.DEPENDENCIA.2
   {
     id: 'dep_q49_si_habilita_q50_q51_en_5b',
     source: { key: FIELD.q54, label: '49 Se presenta recurso' },
     description: 'En 5B, si Q49 = Sí, habilita Q50 y Q51.',
-    when: (record) => !isUtilidadPublicaFlow(record) && equalsAnyInsensitive(get(record, FIELD.q54), ['Sí', 'S?']),
+    when: (record) =>
+      !isUtilidadPublicaFlow(record) &&
+      isNoConcedeSubrogadoPenal(get(record, FIELD.q52)) &&
+      equalsAnyInsensitive(get(record, FIELD.q54), ['Sí', 'S?']),
     effects: {
       enable: [FIELD.q55, FIELD.b5NormalSentidoResuelveSolicitud],
     },

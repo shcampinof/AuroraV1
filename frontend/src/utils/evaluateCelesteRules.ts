@@ -29,6 +29,10 @@ const REQ_BLOQUE_3: string[][] = [
   ],
 ];
 
+const REQ_BLOQUE_4: string[][] = [
+  ['Fecha de entrevista', 'Fecha de entrevista'],
+];
+
 function toText(v: unknown): string {
   return String(v ?? '').trim();
 }
@@ -57,9 +61,18 @@ function areMandatoryFieldsFilledBloque3(answers: CelesteRecord): boolean {
   return REQ_BLOQUE_3.every((alternatives) => alternatives.some((k) => isFilled(getAnswerByKey(answers, k))));
 }
 
+function areMandatoryFieldsFilledBloque4(answers: CelesteRecord): boolean {
+  return REQ_BLOQUE_4.every((alternatives) => alternatives.some((k) => isFilled(getAnswerByKey(answers, k))));
+}
+
 function resolveVisibleBlocks(answers: CelesteRecord): CelesteBlockId[] {
   const visible: CelesteBlockId[] = ['bloque1', 'bloque2Celeste', 'bloque3Celeste'];
-  if (areMandatoryFieldsFilledBloque3(answers)) visible.push('bloque4Celeste', 'bloque5Celeste');
+  // Regla: CELESTE.B4.VISIBILIDAD.1
+  if (areMandatoryFieldsFilledBloque3(answers)) visible.push('bloque4Celeste');
+  // Regla: CELESTE.B5.VISIBILIDAD.2
+  if (visible.includes('bloque4Celeste') && areMandatoryFieldsFilledBloque4(answers)) {
+    visible.push('bloque5Celeste');
+  }
   return visible;
 }
 

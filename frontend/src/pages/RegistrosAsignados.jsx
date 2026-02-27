@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { getDefensores, getPplListado } from '../services/api.js';
 import { pickActiveCaseData } from '../utils/entrevistaEstado.js';
 import { displayOrDash } from '../utils/pplDisplay.js';
-import { evaluateAuroraRules } from '../utils/evaluateAuroraRules.ts';
+import { getEstadoClassByLabel, obtenerEstadoActuacion } from '../config/estadoActuaciones.rules.ts';
 
 function prettifyHeader(key) {
   if (!key) return '';
@@ -19,7 +19,7 @@ const ESTADOS_TRAMITE_OPTIONS = [
   'Analizar el caso',
   'Entrevistar al usuario',
   'Presentar solicitud',
-  'Pendiente decisión',
+  'Pendiente decisi\u00f3n',
   'Caso cerrado',
 ];
 
@@ -79,94 +79,6 @@ function normalize(value) {
   return String(value ?? '').trim().toLowerCase();
 }
 
-function firstFilledValue(...values) {
-  for (const value of values) {
-    const text = String(value ?? '').trim();
-    if (text && text !== '-' && text !== '\u2014') return text;
-  }
-  return '';
-}
-
-function normalizeEstado(value) {
-  return String(value ?? '')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-}
-
-function getEstadoClass(estado) {
-  const key = normalizeEstado(estado);
-  if (key === 'analizar el caso') return 'estado--verde';
-  if (key === 'entrevistar al usuario') return 'estado--amarillo';
-  if (key === 'presentar solicitud') return 'estado--rojo';
-  if (key === 'pendiente decision') return 'estado--azul';
-  if (key === 'caso cerrado') return 'estado--gris';
-  if (key === 'cerrado') return 'estado--gris';
-  if (key === 'activo') return 'estado--azul';
-  return '';
-}
-
-function parseDateValue(value) {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
-  const text = String(value ?? '').trim();
-  if (!text) return null;
-
-  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (isoMatch) {
-    const year = Number(isoMatch[1]);
-    const month = Number(isoMatch[2]);
-    const day = Number(isoMatch[3]);
-    const parsed = new Date(year, month - 1, day);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
-  }
-
-  const dmyMatch = text.match(/^(\d{2})[/-](\d{2})[/-](\d{4})$/);
-  if (dmyMatch) {
-    const day = Number(dmyMatch[1]);
-    const month = Number(dmyMatch[2]);
-    const year = Number(dmyMatch[3]);
-    const parsed = new Date(year, month - 1, day);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
-  }
-
-  const parsed = new Date(text);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed;
-}
-
-function getDaysSince(value) {
-  const date = parseDateValue(value);
-  if (!date) return null;
-  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const diff = Math.floor((today - start) / (1000 * 60 * 60 * 24));
-  return diff < 0 ? 0 : diff;
-}
-
-function getSemaforoClassByDays(days) {
-  if (!Number.isFinite(days)) return '';
-  if (days <= 15) return 'estado--verde';
-  if (days <= 30) return 'estado--amarillo';
-  return 'estado--rojo';
-}
-
-function pickFirstValue(source, keys) {
-  if (!source || typeof source !== 'object') return '';
-  return firstFilledValue(...(keys || []).map((k) => source?.[k]));
-}
-
-function canonicalEstadoLabel(value) {
-  const key = normalizeEstado(value);
-  if (key === 'analizar el caso') return 'Analizar el caso';
-  if (key === 'entrevistar al usuario') return 'Entrevistar al usuario';
-  if (key === 'presentar solicitud') return 'Presentar solicitud';
-  if (key === 'pendiente decision') return 'Pendiente decisión';
-  if (key === 'caso cerrado') return 'Caso cerrado';
-  return String(value ?? '').trim();
-}
 
 function distinctSorted(rows, getter) {
   const map = new Map();
@@ -387,72 +299,9 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
     );
   }
 
-  function getEstadoTramiteValue(obj) {
-    const data = pickActiveCaseData(obj);
-    return firstFilledValue(
-      data?.['Acci\u00f3n a realizar'] ??
-      data?.['Accion a realizar'] ??
-      data?.['Actuaci\u00f3n a adelantar'] ??
-      data?.['Actuacion a adelantar'] ??
-      data?.posibleActuacionJudicial ??
-      data?.['Estado del caso'] ??
-      data?.['Estado del tr\u00e1mite'] ??
-      data?.['Estado del tramite'] ??
-      data?.estado ??
-      data?.estadoEntrevista ??
-      data?.['Estado entrevista']
-    );
-  }
-
   function getEstadoDisplayInfo(obj) {
-    const data = pickActiveCaseData(obj);
-    const derivedStatus = canonicalEstadoLabel(evaluateAuroraRules({ answers: data || {} }).derivedStatus);
-    const derivedKey = normalizeEstado(derivedStatus);
-
-    if (derivedKey === 'caso cerrado') {
-      return { label: 'Caso cerrado', className: 'estado--gris' };
-    }
-    if (derivedKey === 'pendiente decision') {
-      return { label: 'Pendiente decisión', className: 'estado--azul' };
-    }
-    if (derivedKey === 'analizar el caso') {
-      const fechaAsignacionPag = firstFilledValue(
-        pickFirstValue(data, [
-          'Fecha de asignación del PAG',
-          'Fecha asignación del PAG',
-          'Fecha de asignación PAG',
-          'Fecha asignación PAG',
-          'Fecha de asignación',
-          'Fecha de asignacion',
-          'fechaAsignacionPAG',
-          'fechaAsignacionPag',
-          'fechaAsignacion',
-        ]),
-        obj?.createdAt
-      );
-      const className = getSemaforoClassByDays(getDaysSince(fechaAsignacionPag));
-      return { label: 'Analizar el caso', className: className || 'estado--verde' };
-    }
-    if (derivedKey === 'entrevistar al usuario') {
-      const fechaAnalisis = pickFirstValue(data, [
-        'Fecha de análisis jurídico del caso',
-        'Fecha de analisis juridico del caso',
-        'aurora_b3_fechaAnalisis',
-      ]);
-      const className = getSemaforoClassByDays(getDaysSince(fechaAnalisis));
-      return { label: 'Entrevistar al usuario', className: className || 'estado--amarillo' };
-    }
-    if (derivedKey === 'presentar solicitud') {
-      const fechaEntrevista = pickFirstValue(data, ['Fecha de entrevista']);
-      const className = getSemaforoClassByDays(getDaysSince(fechaEntrevista));
-      return { label: 'Presentar solicitud', className: className || 'estado--rojo' };
-    }
-
-    const fallbackLabel = firstFilledValue(getEstadoTramiteValue(obj), derivedStatus);
-    return {
-      label: fallbackLabel,
-      className: getEstadoClass(fallbackLabel),
-    };
+    const estado = obtenerEstadoActuacion(obj);
+    return { label: estado.etiqueta, className: estado.claseFinal };
   }
 
   function getEstadoDisplayInfoMemo(obj) {
@@ -820,7 +669,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
       const estadoInfo = getEstadoDisplayInfoMemo(row);
       const estado = String(estadoInfo.label || '').trim();
       if (!estado) return '\u2014';
-      const estadoClass = String(estadoInfo.className || getEstadoClass(estado)).trim();
+      const estadoClass = String(estadoInfo.className || getEstadoClassByLabel(estado)).trim();
       if (!estadoClass) return estado;
       return <span className={`estadoBadge ${estadoClass}`}>{estado}</span>;
     }
@@ -898,10 +747,10 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
                 onChange={seleccionarFiltroAdicional}
                 options={[
                   { value: 'nombre', label: 'Nombre' },
-                  { value: 'lugar', label: 'Nombre del lugar de privación de la libertad' },
-                  { value: 'departamento', label: 'Departamento del lugar de privación de la libertad' },
-                  { value: 'municipio', label: 'Distrito/municipio del lugar de privación de la libertad' },
-                  { value: 'estado', label: 'Estado del trámite' },
+                  { value: 'lugar', label: 'Nombre del lugar de privaci\u00f3n de la libertad' },
+                  { value: 'departamento', label: 'Departamento del lugar de privaci\u00f3n de la libertad' },
+                  { value: 'municipio', label: 'Distrito/municipio del lugar de privaci\u00f3n de la libertad' },
+                  { value: 'estado', label: 'Estado del tr\u00e1mite' },
                 ]}
               />
 
@@ -916,7 +765,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
               {filtroAdicionalSeleccionado === 'lugar' && (
                 <InputField
-                  label="Nombre del lugar de privación de la libertad"
+                  label="Nombre del lugar de privaci\u00f3n de la libertad"
                   value={filtrosDraft.lugar}
                   onChange={(value) => setFiltroDraft('lugar', value)}
                   options={lugaresDisponibles}
@@ -927,7 +776,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
               {filtroAdicionalSeleccionado === 'departamento' && (
                 <InputField
-                  label="Departamento del lugar de privación de la libertad"
+                  label="Departamento del lugar de privaci\u00f3n de la libertad"
                   value={filtrosDraft.departamento}
                   onChange={(value) =>
                     setFiltrosDraft((prev) => ({
@@ -944,7 +793,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
               {filtroAdicionalSeleccionado === 'municipio' && (
                 <InputField
-                  label="Distrito/municipio del lugar de privación de la libertad"
+                  label="Distrito/municipio del lugar de privaci\u00f3n de la libertad"
                   value={filtrosDraft.municipio}
                   onChange={(value) => setFiltroDraft('municipio', value)}
                   options={municipiosDisponiblesDraft}
@@ -955,7 +804,7 @@ export default function RegistrosAsignados({ onSelectRegistro }) {
 
               {filtroAdicionalSeleccionado === 'estado' && (
                 <DropdownField
-                  label="Estado del trámite"
+                  label="Estado del tr\u00e1mite"
                   value={filtrosDraft.estado}
                   onChange={(value) => setFiltroDraft('estado', value)}
                   options={estadosDisponibles}

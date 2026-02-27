@@ -3,6 +3,7 @@ import auroraFormRules, {
   type DerivedStatus,
   type FormRecord,
 } from '../config/formRules.aurora';
+import { AURORA_FIELD_IDS } from '../config/auroraFieldIds';
 
 type VariantState = 'default' | 'utilidadPublica' | 'tramiteNormal';
 
@@ -108,6 +109,26 @@ export function isFilled(value: unknown): boolean {
   return !PLACEHOLDER_VALUES.has(normalizeText(raw));
 }
 
+function isAffirmativeProcedencia(value: unknown): boolean {
+  if (!isFilled(value)) return false;
+  if (normalizeYesNo(value) === 'si') return true;
+  return normalizeText(value).startsWith('si');
+}
+
+function hasAtLeastOneSiBetween30And34(answers: FormRecord): boolean {
+  const block3Fields = auroraFormRules.mandatoryByBlock?.bloque3 || [];
+  const targetIds = new Set([
+    AURORA_FIELD_IDS.B3_PROCEDENCIA_LIBERTAD_CONDICIONAL,
+    AURORA_FIELD_IDS.B3_PROCEDENCIA_PRISION_DOMICILIARIA,
+    AURORA_FIELD_IDS.B3_PROCEDENCIA_UTILIDAD_PUBLICA,
+    AURORA_FIELD_IDS.B3_PROCEDENCIA_PENA_CUMPLIDA,
+    AURORA_FIELD_IDS.B3_PROCEDENCIA_ACUMULACION_PENAS,
+  ]);
+
+  const targets = block3Fields.filter((field) => field.id && targetIds.has(field.id));
+  return targets.some((field) => isAffirmativeProcedencia(readFieldValue(answers, field)));
+}
+
 function firstLockMatch(answers: FormRecord) {
   return auroraFormRules.lockRules.find((rule) => rule.when(answers));
 }
@@ -135,9 +156,16 @@ function evaluateVisibleBlocks(answers: FormRecord, locked: boolean, activeBlock
   if (!locked) visible.push('bloque3');
 
   // Progresión: 2 -> 3 -> 4 -> 5
-  if (visible.includes('bloque3') && areMandatoryFieldsFilled(answers, 'bloque3')) {
+  // Regla: AURORA.B4.VISIBILIDAD.2
+  // Para habilitar Bloque 4: obligatorios de Bloque 3 + al menos un "Si" entre Q30-Q34.
+  if (
+    visible.includes('bloque3') &&
+    areMandatoryFieldsFilled(answers, 'bloque3') &&
+    hasAtLeastOneSiBetween30And34(answers)
+  ) {
     visible.push('bloque4');
   }
+  // Regla: AURORA.B5.VISIBILIDAD.1
   if (!locked && visible.includes('bloque4') && areMandatoryFieldsFilled(answers, 'bloque4')) {
     visible.push(activeBlock5);
   }

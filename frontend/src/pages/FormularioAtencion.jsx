@@ -267,6 +267,10 @@ function isEquivalenteSi(valor) {
   return v === 'si' || v === 's?';
 }
 
+function isNoConcedeSubrogadoPenal(valor) {
+  return norm(valor) === norm('No concede subrogado penal');
+}
+
 function decisionUsuarioPermiteAvance(valor) {
   const v = norm(valor);
   if (!v) return false;
@@ -1036,8 +1040,16 @@ export default function FormularioAtencion({ numeroInicial }) {
     return sentido === 'Niega utilidad pÃƒÂºblica' || sentidoResuelve === 'Niega utilidad pÃƒÂºblica';
   }, [registro]);
 
+  const habilitarNegativaTramiteNormal = useMemo(() => {
+    if (!auroraActivo) return false;
+    if (actuacionIncluyeUtilidadPublica) return false;
+    const sentido = String(registro?.['Sentido de la decisiÃƒÂ³n'] ?? '').trim();
+    return isNoConcedeSubrogadoPenal(sentido);
+  }, [auroraActivo, actuacionIncluyeUtilidadPublica, registro]);
+
   useEffect(() => {
-    // DESBLOQUEOS CONDICIONALES 5A: si no aplica "Niega...", deshabilita y limpia 53-55 si existen.
+    // Regla: AURORA.B5A.LIMPIEZA.1
+    // Si no aplica negativa de utilidad publica, limpiar campos de motivo/recurso en 5A.
     if (!registro) return;
     if (habilitarNegativaUtilidadPublica) return;
 
@@ -1056,13 +1068,83 @@ export default function FormularioAtencion({ numeroInicial }) {
     });
   }, [registro, habilitarNegativaUtilidadPublica]);
 
+  useEffect(() => {
+    // Regla: AURORA.B5B.DEPENDENCIA.4
+    // Si en tramite normal Q47 != "No concede subrogado penal", limpiar motivo y campos de recurso.
+    if (!registro || !auroraActivo || actuacionIncluyeUtilidadPublica) return;
+    if (habilitarNegativaTramiteNormal) return;
+
+    const keys = [
+      'Motivo de la decisiÃƒÂ³n negativa',
+      'Se presenta recurso',
+      'Fecha de recurso en caso desfavorable',
+      'Sentido de la decisiÃƒÂ³n que resuelve la solicitud',
+    ];
+
+    setRegistro((prev) => {
+      if (!prev) return prev;
+      let changed = false;
+      const next = { ...unwrapRegistro(prev) };
+      for (const k of keys) {
+        const cur = String(prev[k] ?? '');
+        if (cur === '') continue;
+        next[k] = '';
+        changed = true;
+      }
+      return changed ? wrapRegistroForLookup(next) : prev;
+    });
+  }, [registro, auroraActivo, actuacionIncluyeUtilidadPublica, habilitarNegativaTramiteNormal]);
+
+  useEffect(() => {
+    // Regla: AURORA.B5B.DEPENDENCIA.1
+    // Si no hay recurso en 5B, limpiar fecha y sentido que resuelve la solicitud.
+    if (!registro || !auroraActivo || actuacionIncluyeUtilidadPublica) return;
+    if (!habilitarNegativaTramiteNormal) return;
+    if (isEquivalenteSi(registro?.['Se presenta recurso'])) return;
+
+    const keys = ['Fecha de recurso en caso desfavorable', 'Sentido de la decisiÃƒÂ³n que resuelve la solicitud'];
+    setRegistro((prev) => {
+      if (!prev) return prev;
+      let changed = false;
+      const next = { ...unwrapRegistro(prev) };
+      for (const k of keys) {
+        const cur = String(prev[k] ?? '');
+        if (cur === '') continue;
+        next[k] = '';
+        changed = true;
+      }
+      return changed ? wrapRegistroForLookup(next) : prev;
+    });
+  }, [registro, auroraActivo, actuacionIncluyeUtilidadPublica, habilitarNegativaTramiteNormal]);
+
+  const habilitarCelesteMotivoNegativa = useMemo(() => {
+    const sentido = String(registro?.['SENTIDO DE LA DECISIÃƒâ€œN'] ?? '').trim();
+    return norm(sentido) === norm('Niega la solicitud');
+  }, [registro]);
+
   const habilitarCelesteRecurso = useMemo(() => {
     const v = String(registro?.['Ã‚Â¿SE RECURRIÃƒâ€œ EN CASO DE DECISIÃƒâ€œN NEGATIVA?'] ?? '').trim();
     return isEquivalenteSi(v);
   }, [registro]);
 
   useEffect(() => {
-    // REGLA 6 (CELESTE): si 36 != "SÃƒÂ­", 37 y 38 quedan deshabilitadas y vacÃƒÂ­as.
+    // Regla: CELESTE.B5.DEPENDENCIA.3
+    // Si C_Q26 != "Niega la solicitud", limpiar motivo de decision negativa.
+    if (!registro || flow !== 'sindicado') return;
+    if (habilitarCelesteMotivoNegativa) return;
+
+    const key = 'MOTIVO DE LA DECISIÃƒâ€œN NEGATIVA';
+    setRegistro((prev) => {
+      if (!prev) return prev;
+      const cur = String(prev[key] ?? '');
+      if (cur === '') return prev;
+      return wrapRegistroForLookup({ ...unwrapRegistro(prev), [key]: '' });
+    });
+  }, [registro, flow, habilitarCelesteMotivoNegativa]);
+
+  useEffect(() => {
+    // Regla: CELESTE.B5.LIMPIEZA.1
+    // Si no se presenta recurso, limpiar fecha y sentido de recurso.
     if (!registro) return;
     if (habilitarCelesteRecurso) return;
     setRegistro((prev) => {
@@ -1898,7 +1980,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                             onChange={handleChange}
                             options={OPCIONES_BLOQUE_5B_MOTIVO_DECISION_NEGATIVA}
                             required={false}
-                            disabled={bloquearBloque5}
+                            disabled={bloquearBloque5 || !habilitarNegativaTramiteNormal}
                           />
                           <Campo
                             label="49. Se presenta recurso"
@@ -1908,7 +1990,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                             onChange={handleChange}
                             options={OPCIONES_SI_NO}
                             required={false}
-                            disabled={bloquearBloque5}
+                            disabled={bloquearBloque5 || !habilitarNegativaTramiteNormal}
                           />
                           <Campo
                             label="50. Fecha de recurso en caso desfavorable"
@@ -1918,7 +2000,9 @@ export default function FormularioAtencion({ numeroInicial }) {
                             onChange={handleChange}
                             required={false}
                             disabled={
-                              bloquearBloque5 || !isEquivalenteSi(registro?.['Se presenta recurso'])
+                              bloquearBloque5 ||
+                              !habilitarNegativaTramiteNormal ||
+                              !isEquivalenteSi(registro?.['Se presenta recurso'])
                             }
                           />
                           <Campo
@@ -1930,7 +2014,9 @@ export default function FormularioAtencion({ numeroInicial }) {
                             options={OPCIONES_BLOQUE_5B_SENTIDO_DECISION_RESUELVE_SOLICITUD}
                             required={false}
                             disabled={
-                              bloquearBloque5 || !isEquivalenteSi(registro?.['Se presenta recurso'])
+                              bloquearBloque5 ||
+                              !habilitarNegativaTramiteNormal ||
+                              !isEquivalenteSi(registro?.['Se presenta recurso'])
                             }
                           />
                           <Campo
@@ -2102,6 +2188,7 @@ export default function FormularioAtencion({ numeroInicial }) {
                       onChange={handleChange}
                       options={OPCIONES_MOTIVO_DECISION_NEGATIVA_CELESTE}
                       required={false}
+                      disabled={!habilitarCelesteMotivoNegativa}
                     />
                     <Campo
                       label="28. Se presenta recurso"

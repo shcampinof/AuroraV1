@@ -111,7 +111,12 @@ export function areMandatoryFieldsFilledCeleste(answers: CelesteRecord, blockId:
 
 export function resolveVisibleBlocksCeleste(answers: CelesteRecord): CelesteBlockId[] {
   const visible: CelesteBlockId[] = [...initialVisibleBlocks];
-  if (areMandatoryFieldsFilledCeleste(answers, 'bloque3Celeste')) visible.push('bloque4Celeste', 'bloque5Celeste');
+  // Regla: CELESTE.B4.VISIBILIDAD.1
+  if (!areMandatoryFieldsFilledCeleste(answers, 'bloque3Celeste')) return visible;
+
+  visible.push('bloque4Celeste');
+  // Regla: CELESTE.B5.VISIBILIDAD.2
+  if (areMandatoryFieldsFilledCeleste(answers, 'bloque4Celeste')) visible.push('bloque5Celeste');
   return visible;
 }
 
